@@ -57,7 +57,7 @@ function buildSettings(env = process.env) {
     admin: {
       apiToken: readSecret('ADMIN_API_TOKEN', {
         isProduction,
-        devFallback: 'dev-admin-token',
+        devFallback: null,
       }),
     },
   };

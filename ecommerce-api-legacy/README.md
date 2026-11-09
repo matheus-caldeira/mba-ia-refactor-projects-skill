@@ -37,7 +37,9 @@ em `api.http`.
 ## Mudanças intencionais de contrato
 
 - `GET /api/admin/financial-report` e `DELETE /api/users/:id` exigem
-  `Authorization: Bearer $ADMIN_API_TOKEN` (sem token → 401).
+  `Authorization: Bearer $ADMIN_API_TOKEN` (sem token → 401). Se `ADMIN_API_TOKEN`
+  não estiver configurado, as duas rotas ficam desabilitadas (403) — não há token
+  default.
 - `DELETE /api/users/:id` remove em cascata matrículas e pagamentos do usuário,
   responde 404 para id inexistente e não deixa mais alunos `Unknown` no relatório.
 - `POST /api/checkout` valida formato de e-mail, `c_id` inteiro e número de cartão

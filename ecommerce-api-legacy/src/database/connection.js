@@ -15,6 +15,7 @@ const sqlite3 = require('sqlite3');
 class Database {
   constructor(sqliteDb) {
     this._db = sqliteDb;
+    this._transactionQueue = Promise.resolve();
   }
 
   static open(path) {
@@ -70,7 +71,13 @@ class Database {
    * Unit of Work (P-07/AP-13): ou tudo acontece, ou nada.
    * Recebe uma função async e garante COMMIT no sucesso e ROLLBACK em qualquer erro.
    */
-  async transaction(work) {
+  transaction(work) {
+    const pending = this._transactionQueue.then(() => this._runTransaction(work));
+    this._transactionQueue = pending.catch(() => undefined);
+    return pending;
+  }
+
+  async _runTransaction(work) {
     await this.run('BEGIN TRANSACTION');
     try {
       const result = await work(this);

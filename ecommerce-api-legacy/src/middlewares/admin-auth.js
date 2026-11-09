@@ -1,7 +1,7 @@
 'use strict';
 
 const crypto = require('node:crypto');
-const { UnauthorizedError } = require('../errors/app-errors');
+const { ForbiddenError, UnauthorizedError } = require('../errors/app-errors');
 
 /**
  * Autenticacao das rotas administrativas (achado #3 / AP-05).
@@ -30,6 +30,10 @@ function extractToken(req) {
 
 function requireAdmin({ adminToken }) {
   return function authenticateAdmin(req, res, next) {
+    if (!adminToken) {
+      return next(new ForbiddenError('Operação administrativa desabilitada: ADMIN_API_TOKEN não configurado'));
+    }
+
     const provided = extractToken(req);
 
     if (!provided || !timingSafeEquals(provided, adminToken)) {
