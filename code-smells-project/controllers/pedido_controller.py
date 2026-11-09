@@ -1,5 +1,6 @@
 """Orquestra os casos de uso de Pedido, delegando a regra ao serviço."""
 
+from middlewares.auth import exigir_proprio_ou_admin
 from middlewares.errors import ValidationError
 
 
@@ -19,12 +20,14 @@ class PedidoController:
         if not itens:
             raise ValidationError("Pedido deve ter pelo menos 1 item")
 
+        exigir_proprio_ou_admin(usuario_id)
         return self._service.criar(usuario_id, itens)
 
     def listar_todos(self):
         return self._service.listar_todos()
 
     def listar_por_usuario(self, usuario_id):
+        exigir_proprio_ou_admin(usuario_id)
         return self._service.listar_por_usuario(usuario_id)
 
     def alterar_status(self, pedido_id, dados):

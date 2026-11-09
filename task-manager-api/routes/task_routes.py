@@ -1,6 +1,6 @@
-"""Fronteira HTTP das tasks: mapeia rota -> controller. Sem regra de negócio."""
-
 from flask import Blueprint, current_app, jsonify, request
+
+from middlewares.auth import current_user, require_auth
 
 task_bp = Blueprint('tasks', __name__)
 
@@ -10,11 +10,13 @@ def _controller():
 
 
 @task_bp.route('/tasks', methods=['GET'])
+@require_auth
 def get_tasks():
     return jsonify(_controller().list()), 200
 
 
 @task_bp.route('/tasks/search', methods=['GET'])
+@require_auth
 def search_tasks():
     return jsonify(
         _controller().search(
@@ -27,25 +29,32 @@ def search_tasks():
 
 
 @task_bp.route('/tasks/stats', methods=['GET'])
+@require_auth
 def task_stats():
     return jsonify(_controller().stats()), 200
 
 
 @task_bp.route('/tasks/<int:task_id>', methods=['GET'])
+@require_auth
 def get_task(task_id):
     return jsonify(_controller().get(task_id)), 200
 
 
 @task_bp.route('/tasks', methods=['POST'])
+@require_auth
 def create_task():
-    return jsonify(_controller().create(request.get_json(silent=True))), 201
+    data = request.get_json(silent=True)
+    return jsonify(_controller().create(data, actor=current_user())), 201
 
 
 @task_bp.route('/tasks/<int:task_id>', methods=['PUT'])
+@require_auth
 def update_task(task_id):
-    return jsonify(_controller().update(task_id, request.get_json(silent=True))), 200
+    data = request.get_json(silent=True)
+    return jsonify(_controller().update(task_id, data, actor=current_user())), 200
 
 
 @task_bp.route('/tasks/<int:task_id>', methods=['DELETE'])
+@require_auth
 def delete_task(task_id):
-    return jsonify(_controller().delete(task_id)), 200
+    return jsonify(_controller().delete(task_id, actor=current_user())), 200

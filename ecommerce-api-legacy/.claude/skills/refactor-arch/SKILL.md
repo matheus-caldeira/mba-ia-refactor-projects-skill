@@ -223,11 +223,14 @@ A fase não termina sem isto. Execute de verdade:
    confirme que responde com status coerente. Compare com o comportamento anterior.
 3. **Regressão dos achados** — rode novamente os greps de detecção da Fase 2 e
    confirme que os sinais sumiram.
-4. **Concorrência mínima** — se a refatoração introduziu transação, pool ou troca de
+4. **Autorização** — para cada rota protegida, confirme 401 sem token e 403 com
+   um usuário que não é dono do recurso nem admin. Se o projeto tiver suíte de
+   testes, escreva esses casos nela e rode a suíte.
+5. **Concorrência mínima** — se a refatoração introduziu transação, pool ou troca de
    conexão, dispare ~8 requisições de escrita em paralelo (`curl ... &` + `wait`) e
    confirme que todas respondem com sucesso. Transação explícita sobre uma conexão
    única compartilhada (`BEGIN` aninhado) é a regressão típica deste passo.
-5. **Encerre o processo** que você subiu.
+6. **Encerre o processo** que você subiu.
 
 Se qualquer passo falhar, **corrija antes de declarar conclusão**. Se algo não pôde
 ser validado por limitação do ambiente, diga explicitamente o que ficou pendente e

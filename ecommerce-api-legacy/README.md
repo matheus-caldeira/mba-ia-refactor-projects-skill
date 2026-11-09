@@ -19,6 +19,7 @@ src/middlewares/        # auth administrativa, async handler, error handler cent
 src/gateways/           # gateway de pagamento injetável (não loga PAN nem chave)
 src/security/           # hash de senha com scrypt (node:crypto)
 src/errors/             # erros de domínio tipados
+test/                   # node:test — 401/403, contrato do checkout, concorrência
 ```
 
 ## Como rodar
@@ -33,6 +34,12 @@ Sobe em `http://localhost:3000`. O banco SQLite é em memória (`DATABASE_PATH=:
 e recebe o seed a cada boot. Em `NODE_ENV=production` o boot **falha** se
 `PAYMENT_GATEWAY_KEY` ou `ADMIN_API_TOKEN` estiverem ausentes. Exemplos de requisição
 em `api.http`.
+
+## Testes
+
+```bash
+npm test        # node --test, sem dependências extras
+```
 
 ## Mudanças intencionais de contrato
 

@@ -2,6 +2,7 @@
 
 from datetime import timedelta
 
+from controllers.policies import ensure_self_or_supervisor
 from errors import NotFoundError
 from models.clock import utcnow
 
@@ -77,7 +78,8 @@ class ReportController:
             'user_productivity': user_stats,
         }
 
-    def user_report(self, user_id):
+    def user_report(self, user_id, actor=None):
+        ensure_self_or_supervisor(actor, user_id)
         user = self._users.get(user_id)
         if not user:
             raise NotFoundError('Usuário não encontrado')

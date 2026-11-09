@@ -6,6 +6,7 @@ from middlewares.errors import (
     UnauthorizedError,
     ValidationError,
 )
+from middlewares.auth import emitir_token, exigir_proprio_ou_admin
 from models import usuario_model
 
 
@@ -14,6 +15,7 @@ def listar():
 
 
 def buscar(usuario_id):
+    exigir_proprio_ou_admin(usuario_id)
     usuario = usuario_model.buscar_por_id(usuario_id)
     if usuario is None:
         raise NotFoundError("Usuário não encontrado")
@@ -50,4 +52,4 @@ def login(dados):
     if usuario is None:
         # Mensagem única: não revela se o e-mail existe.
         raise UnauthorizedError("Email ou senha inválidos")
-    return usuario
+    return usuario, emitir_token(usuario)

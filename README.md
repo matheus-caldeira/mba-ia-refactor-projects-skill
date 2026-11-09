@@ -36,11 +36,13 @@ referem-se ao commit `6d1ce62`.
 | 4 | CRITICAL | `SECRET_KEY` e `DEBUG=True` hardcoded, bind em `0.0.0.0`, e `/health` devolvendo a `secret_key` (`app.py:7-8, 88`; `controllers.py:285-289`) | Console do Werkzeug exposto na rede (RCE) e a chave de assinatura entregue por HTTP. |
 | 5 | HIGH | Conexão SQLite global com `check_same_thread=False` (`database.py:4-12`) | Estado global mutável: requisições concorrentes compartilham a mesma transação; impede teste isolado. |
 | 6 | HIGH | Regra de negócio no controller: notificações por `print` e "Devolver estoque" anunciado mas não implementado (`controllers.py:208-210, 247-250`) | Bug real: cancelar pedido nunca repõe estoque. |
-| 7 | MEDIUM | N+1 nas listagens de pedidos (`models.py:188, 192, 220, 224`) | 1 + N + N×M queries por requisição. |
-| 8 | MEDIUM | Validação duplicada e divergente entre criar/atualizar produto (`controllers.py:28-50` vs `72-90`); e-mail sem unicidade | O update aceita o que a criação recusa. |
-| 9 | MEDIUM | 16 `except Exception` devolvendo `str(e)` ao cliente (`controllers.py`) | Vaza detalhes internos e achata 400/404/500 num só erro. |
-| 10 | LOW | Magic numbers nas faixas de desconto (`models.py:256-262`) | Regra de preço invisível e fácil de quebrar. |
-| 11 | LOW | Imports mortos (`models.py:2`, `database.py:2`) e serialização copiada em 7 funções | Ruído e correções que ficam pela metade. |
+| 7 | HIGH | Nenhuma rota identifica quem chama: dados e pedidos de qualquer usuário por id, pedido criado em nome de outro, catálogo e status alteráveis por qualquer um (`app.py:11-28`) | IDOR: enumerar `/pedidos/usuario/1..N` expõe o histórico de compras da base inteira. |
+| 8 | MEDIUM | Estoque validado antes e separado da baixa (`models.py:144` vs `163-166`), sem transação | Pedidos simultâneos — ou o mesmo produto repetido no pedido — deixam o estoque negativo. |
+| 9 | MEDIUM | N+1 nas listagens de pedidos (`models.py:188, 192, 220, 224`) | 1 + N + N×M queries por requisição. |
+| 10 | MEDIUM | Validação duplicada e divergente entre criar/atualizar produto (`controllers.py:28-50` vs `72-90`); e-mail sem unicidade | O update aceita o que a criação recusa. |
+| 11 | MEDIUM | 16 `except Exception` devolvendo `str(e)` ao cliente (`controllers.py`) | Vaza detalhes internos e achata 400/404/500 num só erro. |
+| 12 | LOW | Magic numbers nas faixas de desconto (`models.py:256-262`) | Regra de preço invisível e fácil de quebrar. |
+| 13 | LOW | Imports mortos (`models.py:2`, `database.py:2`) e serialização copiada em 7 funções | Ruído e correções que ficam pela metade. |
 
 ### Projeto 2 — `ecommerce-api-legacy` (Node.js/Express, LMS com checkout)
 
@@ -65,7 +67,7 @@ referem-se ao commit `6d1ce62`.
 | 1 | CRITICAL | Senhas com MD5 sem salt (`models/user.py:27-32`) | Recuperáveis por rainbow table em segundos. |
 | 2 | CRITICAL | `to_dict()` devolve o hash da senha em 4 endpoints (`models/user.py:21`) | Com MD5, equivale a vazar a senha. |
 | 3 | CRITICAL | Credenciais SMTP hardcoded (`services/notification_service.py:7-10`) | Permite enviar e-mail em nome da aplicação. |
-| 4 | CRITICAL | Token `fake-jwt-token-<id>` e nenhuma rota protegida; cadastro aceita `role: admin` (`routes/user_routes.py:52, 71, 210`) | Qualquer um vira admin e apaga usuários. |
+| 4 | CRITICAL | Token `fake-jwt-token-<id>` e nenhuma rota protegida; cadastro aceita `role: admin`; `PUT /users/<id>` troca senha e papel de qualquer usuário (`routes/user_routes.py:52, 71, 92-132, 210`) | Qualquer um vira admin, assume contas alheias e apaga usuários. |
 | 5 | HIGH | Rotas fazem papel de controller e de repositório; `services/` e `utils/` não são usados (`routes/task_routes.py:85-154`…) | A separação em pastas é só aparente. |
 | 6 | HIGH | Regra "atrasada" copiada em 6 lugares enquanto `Task.is_overdue()` nunca é chamado | Divergência silenciosa entre listagem e relatório. |
 | 7 | MEDIUM | N+1 em `GET /tasks`, `/users`, `/categories` e no resumo | Medido: `GET /tasks` faz 17 queries com 10 tasks. |
@@ -114,7 +116,7 @@ referem-se ao commit `6d1ce62`.
 | AP-02 | Credenciais e segredos hardcoded | CRITICAL | Presente nos 3 projetos |
 | AP-03 | Senha em texto puro ou hash fraco | CRITICAL | Texto puro (P1), caseiro (P2), MD5 (P3) |
 | AP-04 | God Class / God Method | CRITICAL | `AppManager` (P2), `models.py` (P1) |
-| AP-05 | Endpoint administrativo sem autenticação | CRITICAL | Detecção por ausência — P1, P2, P3 |
+| AP-05 | Endpoint sem autenticação/autorização, inclusive por objeto (IDOR) e campos privilegiados no payload | CRITICAL | Detecção por ausência e matriz rota × quem pode — P1, P2, P3 |
 | AP-06 | Debug ativo e exposição de configuração | CRITICAL | `debug=True` + `0.0.0.0` = RCE no Werkzeug |
 | AP-07 | Estado global mutável | HIGH | Conexão global (P1), driver instanciado na classe (P2) |
 | AP-08 | Regra de negócio no controller/rota | HIGH | O anti-pattern central de MVC |
@@ -122,7 +124,7 @@ referem-se ao commit `6d1ce62`.
 | AP-10 | Query N+1 | MEDIUM | P1, P2 e P3 |
 | AP-11 | Validação ausente ou duplicada | MEDIUM | Regras copiadas e divergentes |
 | AP-12 | Erro engolido ou inconsistente | MEDIUM | `except` genérico, `err` ignorado |
-| AP-13 | Integridade referencial / transação | MEDIUM | Checkout sem transação, órfãos |
+| AP-13 | Integridade referencial, transação e corrida check-then-act | MEDIUM | Checkout sem transação, órfãos, estoque negativo |
 | AP-14 | Legibilidade (nomes, magic numbers, imports mortos) | LOW | Garante detecção própria para o nível LOW |
 
 ### Como garanti o agnosticismo de tecnologia
@@ -137,7 +139,7 @@ referem-se ao commit `6d1ce62`.
    (cria camadas) e um parcialmente estruturado (preserva o que funciona, extrai o que
    vaza, ativa o que está morto, apaga código morto).
 5. **A mesma skill, byte a byte, nos 3 projetos** — `SKILL.md` com o mesmo MD5
-   (`7ef3986a6652c6e0201402ba1c10d611`) nas três cópias.
+   (`bf8072e861dfdedc9b0529c62c5b3486`) nas três cópias.
 
 ### Desafios encontrados e como resolvi
 
@@ -214,7 +216,7 @@ DB tables:     tasks, users, categories
 
 | Projeto | Stack | CRITICAL | HIGH | MEDIUM | LOW | Total | APIs deprecated |
 |---|---|---|---|---|---|---|---|
-| 1 — `code-smells-project` | Python + Flask 3.1.1 | 5 | 2 | 4 | 4 | **15** | nenhuma encontrada (varredura registrada) |
+| 1 — `code-smells-project` | Python + Flask 3.1.1 | 5 | 3 | 4 | 4 | **16** | nenhuma encontrada (varredura registrada) |
 | 2 — `ecommerce-api-legacy` | Node.js + Express 4.18 | 5 | 2 | 5 | 3 | **15** | callbacks aninhados → async/await |
 | 3 — `task-manager-api` | Python + Flask 3.0.0 | 5 | 2 | 4 | 3 | **14** | `datetime.utcnow`, `Query.get`, `hashlib.md5` |
 
@@ -232,7 +234,8 @@ models.py                 models/                    database (conexão por requ
 database.py               controllers/               produto, usuario, pedido/relatório, sistema
                           services/                  pedido_service (transação, estoque), notificador
                           routes/                    Blueprints (camada View)
-                          middlewares/               errors, error_handler, admin_auth
+                          middlewares/               errors, error_handler, auth (token, require_admin)
+                          tests/                     pytest (25 testes)
 ```
 
 **Projeto 2** — 3 arquivos (180 linhas) → 26 arquivos (1.136 linhas)
@@ -277,7 +280,7 @@ models/ routes/ services/ utils/       + config/settings.py     configuração �
 | **Fase 2** — relatório segue o template | [x] | [x] | [x] |
 | Cada finding com arquivo e linhas | [x] | [x] | [x] |
 | Ordenados CRITICAL → LOW | [x] | [x] | [x] |
-| Mínimo de 5 findings | [x] 15 | [x] 15 | [x] 14 |
+| Mínimo de 5 findings | [x] 16 | [x] 15 | [x] 14 |
 | APIs deprecated (se aplicável) | [x] varredura sem ocorrência | [x] | [x] |
 | Pausa e pede confirmação antes da Fase 3 | [x] | [x] | [x] |
 | **Fase 3** — estrutura MVC | [x] | [x] | [x] |
@@ -288,14 +291,15 @@ models/ routes/ services/ utils/       + config/settings.py     configuração �
 | Error handling centralizado | [x] | [x] | [x] |
 | Entry point claro | [x] | [x] | [x] |
 | Aplicação inicia sem erros | [x] | [x] | [x] |
-| Endpoints originais respondem | [x] 33/33 | [x] 10/10 | [x] 35/35 |
+| Endpoints originais respondem (com token quando exigido) | [x] 33/33 | [x] 10/10 | [x] 35/35 |
+| Suíte automatizada (401/403, concorrência) | [x] 25 testes | [x] 7 testes | [x] 32 testes |
 
 ### Logs das aplicações rodando após a refatoração
 
 Cada projeto foi executado **antes** (código original) e **depois** com o mesmo
 roteiro de requisições; a comparação é de status HTTP por chamada.
 
-**Projeto 1** — `PORT=2533 ADMIN_TOKEN=dev-admin-token ./venv/bin/python app.py`
+**Projeto 1** — `PORT=2533 ./venv/bin/python app.py` (roteiro com o token do admin obtido em `/login`)
 
 ```
 GET    /health                 -> 200 | {"counts":{"pedidos":0,"produtos":10,"usuarios":3},"database":"connected","status":"ok","versao":"1.0.0"}
@@ -307,10 +311,12 @@ POST   /login (' -- )          -> 401 | {"erro":"Email ou senha inválidos","suc
 POST   /pedidos                -> 201 | {"dados":{"pedido_id":1,"total":6179.79},...}
 GET    /relatorios/vendas      -> 200 | {"dados":{"desconto_aplicavel":308.99,"faturamento_bruto":6179.79,...}
 POST   /admin/query            -> 404                                                           (antes: 200, SQL arbitrário)
-POST   /admin/reset-db (token) -> 200 ; sem token -> 401
+POST   /admin/reset-db (admin) -> 200
+GET    /usuarios sem token     -> 401 ; token de cliente -> 403
+GET    /pedidos/usuario/3 com token do usuário 2 -> 403
 cancelar pedido de 3 notebooks: estoque 10 -> 7 -> 10                                           (antes: nunca devolvia)
-8 POST /pedidos em paralelo  -> 201 x8
-diff de status antes/depois: só /login com SQLi (200→401) e /admin/query (200→404)
+diff de status antes/depois (33 chamadas): só /login com SQLi (200→401) e /admin/query (200→404)
+pytest: 25 passed — inclui 8 pedidos simultâneos de 2 unidades com estoque 8: 4 x 201, 4 x 400, estoque final 0
 ```
 
 **Projeto 2** — `PORT=2534 ADMIN_API_TOKEN=dev-admin-token npm start`
@@ -325,6 +331,7 @@ GET    /api/admin/financial-report + Bearer -> 200 | [{"course":"Clean Architect
 DELETE /api/users/2 + Bearer             -> 200 | Usuário deletado, junto com suas matrículas e pagamentos.
 [payment] autorização solicitada cartão=****4444 valor=497 ...      (antes: PAN completo e pk_live no log)
 8 POST /api/checkout em paralelo         -> 200 x8   (antes da correção da iteração: 7 x 500)
+npm test: 7 pass — 401/403 nas rotas administrativas, contrato do checkout, concorrência
 NODE_ENV=production sem segredos         -> "Falha ao iniciar a aplicação: Variável de ambiente obrigatória ausente: PAYMENT_GATEWAY_KEY..."
 ```
 
@@ -339,7 +346,8 @@ GET    /reports/summary        -> 200 | {"overdue":{"count":2,...
 DELETE /users/3 sem token      -> 401 | {"error":"Token ausente"}
 DELETE /users/3 token de user  -> 403 | {"error":"Acesso negado"}
 DELETE /users/4 token de admin -> 200 | {"message":"Usuário deletado com sucesso"}
-diff de status antes/depois (35 chamadas): nenhuma diferença
+diff de status antes/depois (35 chamadas, com token do admin): nenhuma diferença; sem token -> 401
+pytest: 32 passed — matriz de autorização (401/403) de todas as rotas, PUT /users por terceiro -> 403
 queries por requisição (antes -> depois): /tasks 17 -> 1, /users 4 -> 2, /categories 5 -> 2
 ```
 
@@ -363,6 +371,23 @@ pyenv local, não da aplicação; não afeta boot nem endpoints.
   assíncrono, transações explícitas se intercalam — algo que não aparece nos projetos
   Flask (conexão/sessão por requisição). A skill agora testa isso.
 
+### Revisão de segurança pós-entrega
+
+Uma revisão automática de segurança sobre os commits apontou três achados. Foram todos
+corrigidos (e não apenas documentados), com testes:
+
+| Achado | Projeto | Tratamento |
+|---|---|---|
+| [ALTA] `require_admin` só protegia `/admin/reset-db`; catálogo, status de pedido, listagens e relatórios abertos; `/pedidos/usuario/<id>` sem restrição ao próprio usuário | P1 | `/login` passou a emitir token assinado; rotas administrativas exigem `tipo = admin`; rotas por usuário exigem o próprio usuário ou admin; `POST /pedidos` só para o `usuario_id` do token. Relatório 1 ganhou o achado #8 (IDOR) |
+| [MÉDIA] Corrida no estoque (checagem antes do UPDATE) | P1 | UPDATE condicional `... AND estoque >= ?` com conferência de `rowcount` e rollback; quantidades repetidas somadas antes de validar. Teste com 8 pedidos simultâneos |
+| [CRÍTICA] `PUT /users/<id>` sem `@require_auth` e sem checagem do ator | P3 | `require_auth` + próprio usuário ou admin (senão 403); `role`/`active` só admin; troca da própria senha exige `current_password`. Mesmo critério aplicado a todas as rotas de usuários, tasks, relatórios e categorias (tabela no README do projeto) |
+| Revisão do mesmo padrão | P2 | As únicas rotas privilegiadas (relatório financeiro e exclusão de usuário) já exigiam token admin; não há rota de alteração de usuário. Ficaram cobertas por testes |
+
+A skill foi atualizada para pegar esse padrão nos três projetos: o AP-05 agora cobre
+autorização por objeto (IDOR) e campos privilegiados no payload, o AP-13 cobre corrida
+check-then-act, o playbook mostra as duas correções e a Fase 3 exige verificar 401/403
+de cada rota protegida.
+
 ### Limites desta entrega
 
 - Os relatórios foram produzidos com o Claude Code seguindo o procedimento da skill
@@ -371,8 +396,6 @@ pyenv local, não da aplicação; não afeta boot nem endpoints.
   uma sessão interativa separada `claude "/refactor-arch"` respondendo `y` para cada
   projeto. As refatorações dos três projetos partiram de uma execução anterior da skill
   e foram revisadas, corrigidas e validadas nesta entrega.
-- Não há suíte de testes automatizados nos projetos; a validação é o roteiro de
-  requisições HTTP antes/depois descrito acima.
 - O envio real de e-mail (SMTP) do projeto 3 não foi exercitado: sem `EMAIL_ENABLED`,
   o serviço apenas registra a notificação no log.
 
@@ -416,11 +439,13 @@ cp -r code-smells-project/.claude/skills/refactor-arch <outro-projeto>/.claude/s
 ```bash
 cd code-smells-project
 python3 -m venv venv && ./venv/bin/pip install -r requirements.txt
-PORT=5001 ADMIN_TOKEN=dev-admin-token ./venv/bin/python app.py
+./venv/bin/pip install -r requirements-dev.txt && ./venv/bin/python -m pytest -q
+PORT=5001 ./venv/bin/python app.py
 curl -s localhost:5001/health
-curl -s localhost:5001/usuarios | grep -c '"senha"'               # 0
-curl -s -X POST localhost:5001/login -H 'Content-Type: application/json' \
-     -d '{"email":"admin@loja.com","senha":"admin123"}'           # 200
+TOKEN=$(curl -s -X POST localhost:5001/login -H 'Content-Type: application/json' \
+     -d '{"email":"admin@loja.com","senha":"admin123"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])')
+curl -s -o /dev/null -w '%{http_code}\n' localhost:5001/usuarios                        # 401
+curl -s -H "Authorization: Bearer $TOKEN" localhost:5001/usuarios | grep -c '"senha"'    # 0
 curl -s -o /dev/null -w '%{http_code}\n' -X POST localhost:5001/login \
      -H 'Content-Type: application/json' -d "{\"email\":\"admin@loja.com' -- \",\"senha\":\"x\"}"   # 401
 curl -s -o /dev/null -w '%{http_code}\n' -X POST localhost:5001/admin/query   # 404
@@ -429,7 +454,7 @@ curl -s -o /dev/null -w '%{http_code}\n' -X POST localhost:5001/admin/query   # 
 **Projeto 2**
 
 ```bash
-cd ecommerce-api-legacy && npm install
+cd ecommerce-api-legacy && npm install && npm test
 PORT=3000 ADMIN_API_TOKEN=dev-admin-token npm start
 curl -s -X POST localhost:3000/api/checkout -H 'Content-Type: application/json' \
   -d '{"usr":"Guilherme","eml":"gui@fullcycle.com.br","pwd":"senhaforte","c_id":2,"card":"4111222233334444"}'
@@ -442,12 +467,14 @@ curl -s -H 'Authorization: Bearer dev-admin-token' localhost:3000/api/admin/fina
 ```bash
 cd task-manager-api
 python3 -m venv venv && ./venv/bin/pip install -r requirements.txt
+./venv/bin/pip install -r requirements-dev.txt && ./venv/bin/python -m pytest -q
 SEED_PASSWORD=dev-password-123 ./venv/bin/python seed.py
 PORT=5003 ./venv/bin/python app.py
-curl -s localhost:5003/tasks
-curl -s localhost:5003/users/1 | grep -c '"password"'            # 0
-curl -s -X POST localhost:5003/login -H 'Content-Type: application/json' \
-     -d '{"email":"joao@email.com","password":"dev-password-123"}'   # 200 + token assinado
+curl -s -o /dev/null -w '%{http_code}\n' localhost:5003/tasks       # 401
+TOKEN=$(curl -s -X POST localhost:5003/login -H 'Content-Type: application/json' \
+     -d '{"email":"joao@email.com","password":"dev-password-123"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])')
+curl -s -H "Authorization: Bearer $TOKEN" localhost:5003/tasks
+curl -s -H "Authorization: Bearer $TOKEN" localhost:5003/users/1 | grep -c '"password"'   # 0
 ```
 
 **Regressão dos anti-patterns** (cada comando deve retornar vazio):

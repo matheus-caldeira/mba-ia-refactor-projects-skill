@@ -248,6 +248,42 @@ def reset_db():
 Remoção de endpoint é mudança de contrato — declare-a explicitamente no relatório
 final da Fase 3.
 
+### Autorização por objeto (IDOR) e campos privilegiados
+
+**Antes**
+```python
+@user_bp.route("/users/<int:user_id>", methods=["PUT"])
+def update_user(user_id):
+    user = User.query.get(user_id)          # qualquer um altera qualquer usuário
+    if "role" in data:
+        user.role = data["role"]            # e se promove a admin
+    if "password" in data:
+        user.set_password(data["password"])
+```
+
+**Depois**
+```python
+@user_bp.route("/users/<int:user_id>", methods=["PUT"])
+@require_auth
+def update_user(user_id):
+    return jsonify(controller.update(user_id, request.get_json(), actor=current_user()))
+
+# controller
+def update(self, user_id, data, actor):
+    if actor.id != user_id and not actor.is_admin():
+        raise ForbiddenError("Acesso negado")
+    if ("role" in data or "active" in data) and not actor.is_admin():
+        raise ForbiddenError("Apenas administradores podem alterar role ou active")
+    if "password" in data and actor.id == user_id:
+        if not user.check_password(data.get("current_password") or ""):
+            raise ForbiddenError("Senha atual incorreta")
+```
+
+Regras: a checagem de dono fica no controller (é regra de acesso ao caso de uso), a
+rota só garante que existe um usuário autenticado; aplique o mesmo critério a **todas**
+as rotas que recebem um id; e escreva um teste de 401 (sem token) e de 403 (outro
+usuário) para cada rota protegida.
+
 ---
 
 ## P-06 · Endpoint de health sem vazamento
@@ -689,6 +725,25 @@ transaction(work) {
     this.queue = pending.catch(() => undefined);
     return pending;
 }
+```
+
+**Check-then-act em saldo/estoque** — troque "ler, validar, gravar" por um UPDATE
+condicional e confira o número de linhas afetadas:
+
+```python
+# Antes
+if produto["estoque"] < quantidade:
+    raise ValidationError("Estoque insuficiente")
+db.execute("UPDATE produtos SET estoque = estoque - ? WHERE id = ?", (quantidade, produto_id))
+
+# Depois (quantidades do mesmo produto somadas antes)
+cursor = db.execute(
+    "UPDATE produtos SET estoque = estoque - ? WHERE id = ? AND estoque >= ?",
+    (quantidade, produto_id, quantidade),
+)
+if cursor.rowcount == 0:
+    db.rollback()
+    raise ValidationError("Estoque insuficiente")
 ```
 
 Em Python com `sqlite3`, o equivalente é `try: ... conn.commit() except: conn.rollback(); raise`;

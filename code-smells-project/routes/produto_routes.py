@@ -3,6 +3,7 @@
 from flask import Blueprint, jsonify, request
 
 from controllers import produto_controller
+from middlewares.auth import require_admin
 
 produto_bp = Blueprint("produtos", __name__)
 
@@ -32,6 +33,7 @@ def buscar_produto(id):
 
 
 @produto_bp.post("/produtos")
+@require_admin
 def criar_produto():
     produto_id = produto_controller.criar(request.get_json(silent=True))
     return (
@@ -43,12 +45,14 @@ def criar_produto():
 
 
 @produto_bp.put("/produtos/<int:id>")
+@require_admin
 def atualizar_produto(id):
     produto_controller.atualizar(id, request.get_json(silent=True))
     return jsonify({"sucesso": True, "mensagem": "Produto atualizado"}), 200
 
 
 @produto_bp.delete("/produtos/<int:id>")
+@require_admin
 def deletar_produto(id):
     produto_controller.deletar(id)
     return jsonify({"sucesso": True, "mensagem": "Produto deletado"}), 200

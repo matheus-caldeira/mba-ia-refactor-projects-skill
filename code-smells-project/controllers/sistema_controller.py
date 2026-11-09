@@ -3,6 +3,7 @@
 import logging
 
 from config import settings
+from middlewares.errors import ForbiddenError
 from models import database
 
 logger = logging.getLogger(__name__)
@@ -19,5 +20,7 @@ def health():
 
 
 def resetar_banco():
+    if settings.IS_PRODUCTION:
+        raise ForbiddenError("Operação administrativa desabilitada em produção")
     database.resetar()
     logger.warning("Banco de dados resetado via rota administrativa")

@@ -6,6 +6,8 @@ exatamente os caminhos e métodos existentes.
 
 from flask import Blueprint, current_app, jsonify, request
 
+from middlewares.auth import current_user, require_auth, require_role
+
 report_bp = Blueprint('reports', __name__)
 
 
@@ -18,30 +20,36 @@ def _categories():
 
 
 @report_bp.route('/reports/summary', methods=['GET'])
+@require_role('admin', 'manager')
 def summary_report():
     return jsonify(_reports().summary()), 200
 
 
 @report_bp.route('/reports/user/<int:user_id>', methods=['GET'])
+@require_auth
 def user_report(user_id):
-    return jsonify(_reports().user_report(user_id)), 200
+    return jsonify(_reports().user_report(user_id, actor=current_user())), 200
 
 
 @report_bp.route('/categories', methods=['GET'])
+@require_auth
 def get_categories():
     return jsonify(_categories().list()), 200
 
 
 @report_bp.route('/categories', methods=['POST'])
+@require_role('admin', 'manager')
 def create_category():
     return jsonify(_categories().create(request.get_json(silent=True))), 201
 
 
 @report_bp.route('/categories/<int:cat_id>', methods=['PUT'])
+@require_role('admin', 'manager')
 def update_category(cat_id):
     return jsonify(_categories().update(cat_id, request.get_json(silent=True))), 200
 
 
 @report_bp.route('/categories/<int:cat_id>', methods=['DELETE'])
+@require_role('admin', 'manager')
 def delete_category(cat_id):
     return jsonify(_categories().delete(cat_id)), 200

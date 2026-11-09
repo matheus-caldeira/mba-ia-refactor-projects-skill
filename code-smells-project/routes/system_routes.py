@@ -3,7 +3,7 @@
 from flask import Blueprint, jsonify
 
 from controllers import sistema_controller
-from middlewares.admin_auth import require_admin
+from middlewares.auth import require_admin
 
 system_bp = Blueprint("system", __name__)
 

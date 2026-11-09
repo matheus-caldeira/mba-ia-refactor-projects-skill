@@ -13,7 +13,8 @@ models/                 # conexão por requisição, schema/seed e um model por 
 controllers/            # casos de uso (produto, usuário, pedido/relatório, sistema)
 services/               # regra que cruza entidades (pedido, relatório) e notificador
 routes/                 # Blueprints: só mapeamento HTTP (camada View)
-middlewares/            # erros tipados, error handler central e auth administrativa
+middlewares/            # erros tipados, error handler central e autenticação (token)
+tests/                  # pytest: autorização 401/403, estoque concorrente, regressões
 ```
 
 ## Como rodar
@@ -31,11 +32,34 @@ porta 5000 costuma estar ocupada pelo AirPlay, use `PORT=5001`). O banco SQLite
 (`loja.db`) é criado no primeiro boot com produtos e usuários de exemplo; as senhas do
 seed são gravadas com hash.
 
+## Testes
+
+```bash
+./venv/bin/pip install -r requirements-dev.txt
+./venv/bin/python -m pytest -q
+```
+
+## Autenticação e autorização
+
+`POST /login` devolve, além dos dados do usuário, um `token` assinado (expira em
+`TOKEN_TTL_SECONDS`). Envie-o como `Authorization: Bearer <token>`.
+
+| Acesso | Rotas |
+|---|---|
+| Público | `GET /`, `GET /health`, `GET /produtos`, `GET /produtos/busca`, `GET /produtos/<id>`, `POST /usuarios`, `POST /login` |
+| Próprio usuário ou admin | `GET /usuarios/<id>`, `GET /pedidos/usuario/<id>`, `POST /pedidos` (o `usuario_id` do corpo tem de ser o do token) |
+| Somente admin (`tipo = admin`) | `GET /usuarios`, `GET /pedidos`, `PUT /pedidos/<id>/status`, `GET /relatorios/vendas`, `POST/PUT/DELETE /produtos`, `POST /admin/reset-db` |
+
+Sem token → 401; token de outro usuário ou sem papel suficiente → 403.
+
 ## Mudanças intencionais de contrato
 
+- As rotas da tabela acima que não são públicas passaram a exigir token (no original
+  tudo era aberto e o login não emitia credencial).
 - `POST /admin/query` (executor de SQL arbitrário) foi **removido** → 404.
-- `POST /admin/reset-db` exige `Authorization: Bearer $ADMIN_TOKEN`; sem token
-  configurado, ou com `APP_ENV=production`, responde 403.
+- `POST /admin/reset-db` exige admin e responde 403 com `APP_ENV=production`.
+- A baixa de estoque é atômica (UPDATE condicional); quantidades repetidas do mesmo
+  produto no pedido são somadas antes de validar.
 - `GET /health` deixou de expor `secret_key`, `debug`, `db_path` e `ambiente`.
 - `GET /usuarios` e `GET /usuarios/<id>` não devolvem mais o campo `senha`.
 - Respostas de erro passaram a ter formato único `{"erro": ..., "sucesso": false}`.

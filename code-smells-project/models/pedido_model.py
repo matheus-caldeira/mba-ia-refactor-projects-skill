@@ -92,10 +92,23 @@ def buscar_itens(pedido_id):
     return [{"produto_id": r["produto_id"], "quantidade": r["quantidade"]} for r in rows]
 
 
-def criar(usuario_id, linhas, total):
-    """Insere pedido, itens e baixa de estoque em uma transação única (P-07)."""
+class EstoqueInsuficiente(Exception):
+    def __init__(self, produto_id):
+        super().__init__(f"Estoque insuficiente para o produto {produto_id}")
+        self.produto_id = produto_id
+
+
+def criar(usuario_id, linhas, total, baixas_estoque):
     db = get_db()
     try:
+        for produto_id, quantidade in baixas_estoque.items():
+            cursor = db.execute(
+                "UPDATE produtos SET estoque = estoque - ? WHERE id = ? AND estoque >= ?",
+                (quantidade, produto_id, quantidade),
+            )
+            if cursor.rowcount == 0:
+                raise EstoqueInsuficiente(produto_id)
+
         cursor = db.execute(
             "INSERT INTO pedidos (usuario_id, status, total) VALUES (?, ?, ?)",
             (usuario_id, StatusPedido.PENDENTE.value, total),
@@ -107,10 +120,6 @@ def criar(usuario_id, linhas, total):
                 "INSERT INTO itens_pedido (pedido_id, produto_id, quantidade, "
                 "preco_unitario) VALUES (?, ?, ?, ?)",
                 (pedido_id, linha["produto_id"], linha["quantidade"], linha["preco"]),
-            )
-            db.execute(
-                "UPDATE produtos SET estoque = estoque - ? WHERE id = ?",
-                (linha["quantidade"], linha["produto_id"]),
             )
         db.commit()
         return pedido_id

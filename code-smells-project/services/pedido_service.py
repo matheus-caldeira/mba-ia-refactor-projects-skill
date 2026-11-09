@@ -2,7 +2,7 @@
 
 from middlewares.errors import NotFoundError, ValidationError
 from models import pedido_model, produto_model
-from models.pedido_model import StatusPedido
+from models.pedido_model import EstoqueInsuficiente, StatusPedido
 
 
 class PedidoService:
@@ -12,20 +12,27 @@ class PedidoService:
     def criar(self, usuario_id, itens):
         linhas = []
         total = 0.0
+        produtos = {}
+        baixas_estoque = {}
 
         for item in itens:
+            if not isinstance(item, dict):
+                raise ValidationError("Item deve conter produto_id e quantidade")
             produto_id = item.get("produto_id")
             quantidade = item.get("quantidade")
 
             if produto_id is None or quantidade is None:
                 raise ValidationError("Item deve conter produto_id e quantidade")
-            if not isinstance(quantidade, int) or quantidade <= 0:
+            if not isinstance(quantidade, int) or isinstance(quantidade, bool) or quantidade <= 0:
                 raise ValidationError("Quantidade deve ser um inteiro positivo")
 
-            produto = produto_model.buscar_por_id(produto_id)
+            produto = produtos.get(produto_id) or produto_model.buscar_por_id(produto_id)
             if produto is None:
                 raise ValidationError(f"Produto {produto_id} não encontrado")
-            if produto["estoque"] < quantidade:
+            produtos[produto_id] = produto
+
+            baixas_estoque[produto_id] = baixas_estoque.get(produto_id, 0) + quantidade
+            if produto["estoque"] < baixas_estoque[produto_id]:
                 raise ValidationError(f"Estoque insuficiente para {produto['nome']}")
 
             total += produto["preco"] * quantidade
@@ -37,7 +44,11 @@ class PedidoService:
                 }
             )
 
-        pedido_id = pedido_model.criar(usuario_id, linhas, total)
+        try:
+            pedido_id = pedido_model.criar(usuario_id, linhas, total, baixas_estoque)
+        except EstoqueInsuficiente as erro:
+            nome = produtos[erro.produto_id]["nome"]
+            raise ValidationError(f"Estoque insuficiente para {nome}") from erro
         self._notificador.pedido_criado(pedido_id, usuario_id)
         return {"pedido_id": pedido_id, "total": total}
 

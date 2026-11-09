@@ -180,6 +180,29 @@ nada**: o ramo alternativo persiste qualquer DDL/DML.
 **Agravante:** combinado com bind em `0.0.0.0`, a superfície passa de local para
 toda a rede.
 
+**Autorização por objeto (IDOR) e mass assignment — mesma família, mesma severidade:**
+existir autenticação não basta. Verifique, rota a rota, *quem* pode agir sobre *qual*
+recurso:
+
+- rota que recebe id de usuário (path `/<id>`, `usuario_id`/`user_id` no corpo ou na
+  query) e lê ou altera dados dele **sem comparar com o usuário autenticado**
+  (próprio usuário ou papel privilegiado);
+- update que aceita do payload campos privilegiados (`role`, `tipo`, `is_admin`,
+  `active`) sem exigir papel de admin;
+- troca de senha pelo próprio usuário sem exigir a senha atual;
+- decorator de auth implementado mas **não aplicado** a todas as rotas de escrita.
+
+```bash
+# Rotas de escrita/leitura por id — liste e confira, uma a uma, o guard aplicado
+grep -rnE --exclude-dir={venv,.venv,node_modules,.git,.claude,dist,__pycache__} "(route|add_url_rule)\(.*<int:|\.(get|put|patch|delete)\(['\"][^'\"]*:id" --include='*.py' --include='*.js' .
+
+# Campos privilegiados vindos do payload
+grep -rnE --exclude-dir={venv,.venv,node_modules,.git,.claude,dist,__pycache__} "(data|dados|req\.body)(\[|\.get\(|\.)['\"]?(role|tipo|is_admin|active)" --include='*.py' --include='*.js' .
+```
+
+Monte no relatório (ou no plano da Fase 3) uma **matriz rota × quem pode** — público,
+autenticado, próprio usuário, admin — e trate cada linha sem guard como achado.
+
 **Correção:** playbook P-05.
 
 ---
@@ -426,6 +449,12 @@ grep -rniE --exclude-dir={venv,.venv,node_modules,.git,.claude,dist,__pycache__}
 `INSERT` encadeados sem transação envolvente é o mesmo problema no tempo: falha no
 terceiro insert deixa os dois primeiros persistidos.
 
+**Condição de corrida check-then-act:** ler um saldo/estoque, validar em código e
+só depois gravar (`if estoque < qtd: erro` … `UPDATE ... SET estoque = estoque - ?`) permite
+que duas requisições simultâneas passem pela checagem e deixem o valor negativo.
+Atenção também a itens repetidos do mesmo produto no mesmo pedido, que escapam de uma
+checagem feita item a item.
+
 **Correção:** playbook P-13.
 
 ---
@@ -475,7 +504,7 @@ registre as que não se aplicam:
 - [ ] AP-02 Segredos hardcoded
 - [ ] AP-03 Senha em texto puro / hash fraco
 - [ ] AP-04 God Class / God Method
-- [ ] AP-05 Endpoint admin sem auth
+- [ ] AP-05 Endpoint sem auth, IDOR, campos privilegiados no payload
 - [ ] AP-06 Debug ativo / config exposta
 - [ ] AP-07 Estado global mutável
 - [ ] AP-08 Regra de negócio no controller

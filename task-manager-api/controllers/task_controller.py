@@ -2,6 +2,7 @@
 
 from datetime import datetime
 
+from controllers.policies import ensure_can_assign, ensure_task_access
 from errors import NotFoundError, ValidationError
 from models.clock import utcnow
 from models.task import MAX_PRIORITY, MIN_PRIORITY, VALID_STATUSES, Task
@@ -66,9 +67,10 @@ class TaskController:
 
     # ---------- escrita ----------
 
-    def create(self, data):
+    def create(self, data, actor=None):
         if not data:
             raise ValidationError('Dados inválidos')
+        ensure_can_assign(actor, data.get('user_id'))
 
         title = self._validate_title(data.get('title'), required=True)
         status = data.get('status', 'pending')
@@ -115,10 +117,13 @@ class TaskController:
 
         return task.to_dict()
 
-    def update(self, task_id, data):
+    def update(self, task_id, data, actor=None):
         task = self._require_task(task_id)
+        ensure_task_access(actor, task)
         if not data:
             raise ValidationError('Dados inválidos')
+        if 'user_id' in data:
+            ensure_can_assign(actor, data['user_id'])
 
         if 'title' in data:
             task.title = self._validate_title(data['title'])
@@ -158,8 +163,9 @@ class TaskController:
         self._tasks.commit()
         return task.to_dict()
 
-    def delete(self, task_id):
+    def delete(self, task_id, actor=None):
         task = self._require_task(task_id)
+        ensure_task_access(actor, task)
         self._tasks.delete(task)
         self._tasks.commit()
         return {'message': 'Task deletada com sucesso'}

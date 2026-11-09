@@ -34,9 +34,7 @@ class Settings:
 
         self.SECRET_KEY = self._resolver_secret_key(env)
 
-        # Token das rotas administrativas (/admin/*). Sem ele, elas ficam
-        # desabilitadas — nunca abertas.
-        self.ADMIN_TOKEN = env.get("ADMIN_TOKEN", "").strip()
+        self.TOKEN_TTL_SECONDS = int(env.get("TOKEN_TTL_SECONDS", "3600"))
 
         self.APP_VERSION = env.get("APP_VERSION", "1.0.0")
 

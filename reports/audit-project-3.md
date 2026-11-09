@@ -72,17 +72,19 @@ self.email_password = 'senha123'
 
 ### #5 [CRITICAL] Autenticação falsa e nenhuma rota protegida
 - **Anti-pattern:** AP-05 — Endpoint administrativo sem autenticação
-- **File:** `routes/user_routes.py:207-211` (token), `routes/user_routes.py:52, 71-72` (role livre no cadastro), `routes/user_routes.py:134-151` (DELETE)
+- **File:** `routes/user_routes.py:207-211` (token), `routes/user_routes.py:52, 71-72` (role livre no cadastro), `routes/user_routes.py:92-132` (PUT de qualquer usuário, inclusive `role`, `active` e senha), `routes/user_routes.py:134-151` (DELETE), `routes/task_routes.py:156-238` (PUT/DELETE de qualquer task)
 - **Description:** O "token" de login é `'fake-jwt-token-' + str(user.id)` — sem
   assinatura nem expiração — e nenhuma rota o verifica (grep por
   `before_request|login_required|Authorization` = 0). `POST /users` aceita `role`
   arbitrário.
 - **Impact:** Qualquer pessoa se cadastra como `admin`, forja o token de qualquer
-  usuário trocando o número e exclui usuários (com todas as suas tasks) via
-  `DELETE /users/<id>` sem credencial.
+  usuário trocando o número, troca a senha ou o papel de qualquer usuário via
+  `PUT /users/<id>` (sem senha atual), altera ou apaga tasks alheias e exclui usuários
+  (com todas as suas tasks) via `DELETE /users/<id>` sem credencial.
 - **Recommendation:** Token assinado e com expiração (`itsdangerous`, já dependência
-  do Flask), decorators `require_auth`/`require_role` aplicados às operações
-  privilegiadas, e somente admin define `role`/`active` (playbook P-05).
+  do Flask), `require_auth` em todas as rotas exceto login, cadastro e health; checagem
+  de dono no controller (próprio usuário ou admin/manager); somente admin define
+  `role`/`active`; troca da própria senha exige a senha atual (playbook P-05).
 
 ```python
 return jsonify({

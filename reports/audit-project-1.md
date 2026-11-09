@@ -12,7 +12,7 @@ Date:    2026-11-09
 > `git show 6d1ce62:code-smells-project/<arquivo>`.
 
 ## Summary
-CRITICAL: 5 | HIGH: 2 | MEDIUM: 4 | LOW: 4
+CRITICAL: 5 | HIGH: 3 | MEDIUM: 4 | LOW: 4
 
 ## Findings
 
@@ -153,7 +153,23 @@ if novo_status == "cancelado":
     print("NOTIFICAÇÃO: Pedido " + str(pedido_id) + " cancelado. Devolver estoque.")
 ```
 
-### #8 [MEDIUM] Criação de pedido sem transação e schema sem integridade referencial
+### #8 [HIGH] Dados e operações por usuário sem nenhuma verificação de identidade (IDOR)
+- **Anti-pattern:** AP-05 — Endpoint sem autenticação/autorização (autorização por objeto)
+- **File:** `app.py:18-19, 23-26, 11-16, 28`, `controllers.py:136-144` (`buscar_usuario`), `controllers.py:195-203` (`criar_pedido` usa `usuario_id` do corpo), `controllers.py:222-227` (`listar_pedidos_usuario`)
+- **Description:** O `POST /login` não emite credencial nenhuma, e nenhuma rota identifica
+  quem chama. O id do usuário vem do path ou do corpo e é aceito como está: qualquer
+  cliente lê os dados e os pedidos de qualquer usuário, cria pedidos em nome de outro,
+  lista todos os usuários e todos os pedidos, altera o catálogo
+  (`POST/PUT/DELETE /produtos`), muda o status de qualquer pedido e lê o relatório de
+  faturamento.
+- **Impact:** Não existe fronteira entre cliente e administrador: enumerar
+  `/pedidos/usuario/1..N` expõe o histórico de compra de toda a base, e um cliente
+  cancela ou aprova pedidos alheios.
+- **Recommendation:** Token assinado emitido no login; operações de catálogo, de status
+  de pedido, listagens globais e relatórios restritas a `tipo = admin`; rotas por
+  usuário restritas ao próprio usuário ou a admin (playbook P-05).
+
+### #9 [MEDIUM] Criação de pedido sem transação, com corrida no estoque, e schema sem integridade referencial
 - **Anti-pattern:** AP-13 — Integridade referencial não mantida
 - **File:** `models.py:133-169`, `database.py:36-53`
 - **Description:** `criar_pedido` insere o pedido, cada item e a baixa de estoque em
@@ -162,12 +178,16 @@ if novo_status == "cancelado":
   `FOREIGN KEY` (grep por `FOREIGN KEY|REFERENCES` = 0) e `deletar_produto` faz DELETE
   físico (models.py:68).
 - **Impact:** Uma falha no meio do laço deixa pedido sem itens ou estoque baixado sem
-  pedido; excluir um produto deixa `itens_pedido` apontando para um id inexistente
+  pedido; a checagem de estoque (144) é feita antes e separada da baixa (163-166), então
+  dois pedidos simultâneos — ou o mesmo produto repetido em dois itens do mesmo pedido —
+  passam pela validação e deixam o estoque negativo; excluir um produto deixa `itens_pedido` apontando para um id inexistente
   (a listagem mostra "Desconhecido").
-- **Recommendation:** Envolver pedido + itens + estoque numa transação única e declarar
-  as FKs com `PRAGMA foreign_keys = ON` (playbook P-13).
+- **Recommendation:** Envolver pedido + itens + estoque numa transação única, baixar o
+  estoque com UPDATE condicional (`... WHERE id = ? AND estoque >= ?`) conferindo as
+  linhas afetadas, somar quantidades repetidas antes de validar, e declarar as FKs com
+  `PRAGMA foreign_keys = ON` (playbook P-13).
 
-### #9 [MEDIUM] Query N+1 nas listagens de pedidos
+### #10 [MEDIUM] Query N+1 nas listagens de pedidos
 - **Anti-pattern:** AP-10 — Query N+1
 - **File:** `models.py:171-201` (`get_pedidos_usuario`), `models.py:203-233` (`get_todos_pedidos`)
 - **Description:** Para cada pedido, uma query de itens (188, 220); para cada item, uma
@@ -177,7 +197,7 @@ if novo_status == "cancelado":
 - **Recommendation:** Uma query de pedidos e uma de itens com `LEFT JOIN produtos`,
   agrupando em memória por `pedido_id` (playbook P-10).
 
-### #10 [MEDIUM] Validação duplicada, divergente ou ausente nos handlers
+### #11 [MEDIUM] Validação duplicada, divergente ou ausente nos handlers
 - **Anti-pattern:** AP-11 — Validação de entrada ausente ou duplicada
 - **File:** `controllers.py:28-50` vs `controllers.py:72-90`, `controllers.py:146-162`, `controllers.py:169-170`, `controllers.py:239-240`
 - **Description:** A validação de produto é copiada entre criar e atualizar, mas o
@@ -191,7 +211,7 @@ if novo_status == "cancelado":
   atualizar; unicidade de e-mail no model e no schema; erros de validação como exceção
   tipada tratada pelo handler central (playbook P-11).
 
-### #11 [MEDIUM] 16 blocos `except Exception` devolvendo `str(e)` ao cliente
+### #12 [MEDIUM] 16 blocos `except Exception` devolvendo `str(e)` ao cliente
 - **Anti-pattern:** AP-12 — Tratamento de erro engolido ou inconsistente
 - **File:** `controllers.py:10, 21, 60, 95, 108, 125, 133, 143, 164, 185, 218, 226, 234, 254, 261, 291`, `app.py:77-78`
 - **Description:** Cada handler captura qualquer exceção e responde 500 com a mensagem
@@ -202,7 +222,7 @@ if novo_status == "cancelado":
   `ConflictError`, `UnauthorizedError`) e um único `errorhandler` que loga o stack e
   devolve mensagem genérica em 500 (playbook P-12).
 
-### #12 [LOW] Imports não utilizados
+### #13 [LOW] Imports não utilizados
 - **Anti-pattern:** AP-14 — Legibilidade
 - **File:** `models.py:2`, `database.py:2`
 - **Description:** `models.py` importa `sqlite3` e `database.py` importa `os` sem
@@ -211,7 +231,7 @@ if novo_status == "cancelado":
   em `database.py:5` apesar do `import os`).
 - **Recommendation:** Remover os imports; ler o caminho do banco da configuração.
 
-### #13 [LOW] Magic numbers e literais de status espalhados
+### #14 [LOW] Magic numbers e literais de status espalhados
 - **Anti-pattern:** AP-14 — Legibilidade
 - **File:** `models.py:256-262`, `models.py:247-254`, `controllers.py:242`
 - **Description:** Faixas de desconto como seis literais soltos (10000/5000/1000 e
@@ -221,7 +241,7 @@ if novo_status == "cancelado":
   um status digitado errado em um dos pontos não é detectado.
 - **Recommendation:** Constante `FAIXAS_DESCONTO` e enum `StatusPedido` (playbook P-14).
 
-### #14 [LOW] Serialização copiada literalmente em várias funções
+### #15 [LOW] Serialização copiada literalmente em várias funções
 - **Anti-pattern:** AP-14 — Legibilidade (duplicação)
 - **File:** `models.py:12-21, 31-40, 304-313` (produto), `models.py:79-86, 95-102` (usuário), `models.py:178-185, 211-218` (pedido)
 - **Description:** O mesmo dicionário campo a campo repetido em cada função de leitura.
@@ -230,7 +250,7 @@ if novo_status == "cancelado":
 - **Recommendation:** Uma função `serializar(row)` por entidade com lista de campos
   públicos.
 
-### #15 [LOW] `print` usado como log em todo o projeto
+### #16 [LOW] `print` usado como log em todo o projeto
 - **Anti-pattern:** AP-14 — Legibilidade
 - **File:** `controllers.py:8, 11, 57, 61, 106, 161, 179, 182, 219`, `app.py:56, 83-86`
 - **Description:** Eventos e erros registrados com `print` e concatenação de string,
@@ -264,7 +284,7 @@ concatenado sobre uma conexão global impede parametrização centralizada, tran
 teste.
 
 ================================
-Total: 15 findings
+Total: 16 findings
 ================================
 
 Phase 2 complete. Proceed with refactoring (Phase 3)? [y/n]

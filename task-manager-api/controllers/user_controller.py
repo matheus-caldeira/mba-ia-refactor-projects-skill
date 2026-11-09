@@ -2,6 +2,7 @@
 
 import re
 
+from controllers.policies import ensure_self_or_admin, ensure_self_or_supervisor
 from errors import ConflictError, ForbiddenError, NotFoundError, ValidationError
 from models.user import ROLES, User
 
@@ -33,13 +34,15 @@ class UserController:
             for u in users
         ]
 
-    def get(self, user_id):
+    def get(self, user_id, actor=None):
+        ensure_self_or_supervisor(actor, user_id)
         user = self._require_user(user_id)
         data = user.to_dict()
         data['tasks'] = [t.to_dict() for t in self._tasks.list_by_user(user_id)]
         return data
 
-    def list_tasks(self, user_id):
+    def list_tasks(self, user_id, actor=None):
+        ensure_self_or_supervisor(actor, user_id)
         self._require_user(user_id)
         result = []
         for t in self._tasks.list_by_user(user_id):
@@ -98,9 +101,16 @@ class UserController:
         return user.to_dict()
 
     def update(self, user_id, data, actor=None):
+        ensure_self_or_admin(actor, user_id)
         user = self._require_user(user_id)
         if not data:
             raise ValidationError('Dados inválidos')
+
+        if ('role' in data or 'active' in data) and not actor.is_admin():
+            raise ForbiddenError('Apenas administradores podem alterar role ou active')
+        if 'password' in data and actor.id == user_id:
+            if not user.check_password(data.get('current_password') or ''):
+                raise ForbiddenError('Senha atual incorreta')
 
         if 'name' in data:
             user.name = data['name']
@@ -118,13 +128,11 @@ class UserController:
 
         if 'role' in data:
             self._validate_role(data['role'])
-            if not (actor and actor.is_admin()):
-                raise ForbiddenError('Apenas administradores podem alterar o role')
             user.role = data['role']
 
         if 'active' in data:
-            if not (actor and actor.is_admin()):
-                raise ForbiddenError('Apenas administradores podem ativar/desativar')
+            if not isinstance(data['active'], bool):
+                raise ValidationError('active deve ser booleano')
             user.active = data['active']
 
         self._users.commit()
