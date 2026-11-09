@@ -1,6 +1,6 @@
 """Fonte única de "agora" para os models.
 
-``datetime.utcnow()`` está deprecado no Python 3.12. A substituição canônica é
+``datetime.utcnow`` está deprecado no Python 3.12. A substituição canônica é
 ``datetime.now(timezone.utc)``, que devolve um datetime **aware**. Porém as
 colunas do banco (e as linhas já gravadas em ``tasks.db``) guardam datetimes
 **naive** em UTC; comparar naive com aware levanta ``TypeError``.
