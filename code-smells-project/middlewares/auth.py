@@ -3,7 +3,7 @@ from functools import wraps
 from flask import g, request
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
-from config import settings
+from config.runtime import config_atual
 from models import usuario_model
 
 from .errors import ForbiddenError, UnauthorizedError
@@ -13,7 +13,7 @@ TIPO_ADMIN = "admin"
 
 
 def _serializer():
-    return URLSafeTimedSerializer(settings.SECRET_KEY, salt=TOKEN_SALT)
+    return URLSafeTimedSerializer(config_atual().SECRET_KEY, salt=TOKEN_SALT)
 
 
 def emitir_token(usuario):
@@ -26,7 +26,7 @@ def _usuario_do_token():
         raise UnauthorizedError("Token ausente")
     token = cabecalho[len("Bearer "):].strip()
     try:
-        dados = _serializer().loads(token, max_age=settings.TOKEN_TTL_SECONDS)
+        dados = _serializer().loads(token, max_age=config_atual().TOKEN_TTL_SECONDS)
     except SignatureExpired:
         raise UnauthorizedError("Token expirado")
     except BadSignature:

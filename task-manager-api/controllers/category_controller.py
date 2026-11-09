@@ -2,6 +2,7 @@
 
 import re
 
+from controllers.policies import read_scope
 from errors import NotFoundError, ValidationError
 from models.category import DEFAULT_COLOR, Category
 
@@ -15,8 +16,8 @@ class CategoryController:
         self._categories = category_repository
         self._tasks = task_repository
 
-    def list(self):
-        task_counts = self._tasks.count_grouped_by_category()
+    def list(self, actor=None):
+        task_counts = self._tasks.count_grouped_by_category(owner_id=read_scope(actor))
         result = []
         for c in self._categories.list_all():
             data = c.to_dict()

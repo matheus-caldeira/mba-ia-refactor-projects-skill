@@ -110,6 +110,23 @@ PORT=3000
 NODE_ENV=development
 ```
 
+**Conta administradora do seed** — nunca com senha literal:
+
+```python
+# Antes (database.py / seed.py)
+usuarios = [("Admin", "admin@loja.com", "admin123", "admin"), ...]
+
+# Depois (config/settings.py)
+self.ADMIN_EMAIL = env.get("ADMIN_EMAIL") or (None if self.IS_PRODUCTION else "admin@loja.com")
+self.ADMIN_PASSWORD = env.get("ADMIN_PASSWORD") or (None if self.IS_PRODUCTION else "admin123")  # só dev
+if self.IS_PRODUCTION and not (self.ADMIN_EMAIL and self.ADMIN_PASSWORD):
+    raise ConfigError("ADMIN_EMAIL e ADMIN_PASSWORD são obrigatórios em produção")
+self.ENABLE_RESET_DB = env.get("ENABLE_RESET_DB") == "true" and not self.IS_PRODUCTION
+```
+
+Contas de demonstração com senha conhecida só fora de produção; scripts de seed
+recusam rodar em produção.
+
 Três detalhes que importam: segredo **sem default** (falha no boot em vez de subir
 inseguro), `debug` derivado do ambiente em vez de literal, e `.env` no `.gitignore`.
 Registre no relatório que as chaves expostas precisam ser **rotacionadas** — elas
@@ -278,6 +295,32 @@ def update(self, user_id, data, actor):
         if not user.check_password(data.get("current_password") or ""):
             raise ForbiddenError("Senha atual incorreta")
 ```
+
+**Leitura com escopo do ator** — o mesmo critério vale para GET:
+
+```python
+# Antes: qualquer autenticado lista, busca e conta as tasks de todos
+def list(self):
+    return [t.to_dict() for t in self._tasks.list_all()]
+
+# Depois: supervisor vê tudo; os demais, só o que é deles
+def read_scope(actor):
+    return None if actor.role in ("admin", "manager") else actor.id
+
+def list(self, actor):
+    return [t.to_dict() for t in self._tasks.list_all(owner_id=read_scope(actor))]
+
+def search(self, user_id=None, actor=None, **filtros):
+    scope = read_scope(actor)
+    if scope is not None:
+        if user_id is not None and user_id != scope:
+            raise ForbiddenError("Acesso negado")
+        user_id = scope
+    return self._tasks.search(user_id=user_id, **filtros)
+```
+
+Aplique o escopo também a estatísticas e contagens embutidas (ex.: `task_count` de
+categorias) — número agregado de dados alheios também é vazamento.
 
 Regras: a checagem de dono fica no controller (é regra de acesso ao caso de uso), a
 rota só garante que existe um usuário autenticado; aplique o mesmo critério a **todas**

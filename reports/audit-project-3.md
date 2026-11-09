@@ -80,11 +80,16 @@ self.email_password = 'senha123'
 - **Impact:** Qualquer pessoa se cadastra como `admin`, forja o token de qualquer
   usuário trocando o número, troca a senha ou o papel de qualquer usuário via
   `PUT /users/<id>` (sem senha atual), altera ou apaga tasks alheias e exclui usuários
-  (com todas as suas tasks) via `DELETE /users/<id>` sem credencial.
+  (com todas as suas tasks) via `DELETE /users/<id>` sem credencial. Também não há
+  escopo de leitura: `GET /tasks`, `/tasks/search`, `/tasks/stats`, `/tasks/<id>` e as
+  contagens de `GET /categories` expõem as tasks de todos os usuários. O `seed.py`
+  cria o admin `joao@email.com` com senha literal (`seed.py:16-21`).
 - **Recommendation:** Token assinado e com expiração (`itsdangerous`, já dependência
   do Flask), `require_auth` em todas as rotas exceto login, cadastro e health; checagem
-  de dono no controller (próprio usuário ou admin/manager); somente admin define
-  `role`/`active`; troca da própria senha exige a senha atual (playbook P-05).
+  de dono no controller (próprio usuário ou admin/manager) **também nas leituras**
+  (listagem, busca, estatísticas e contagens com escopo do ator); somente admin define
+  `role`/`active`; troca da própria senha exige a senha atual (playbook P-05); admin
+  criado só com credenciais do ambiente e `seed.py` restrito a desenvolvimento (P-02).
 
 ```python
 return jsonify({

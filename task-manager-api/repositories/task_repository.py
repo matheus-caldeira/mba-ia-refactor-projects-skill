@@ -18,9 +18,10 @@ class TaskRepository:
     def get(self, task_id):
         return self.session.get(Task, task_id)
 
-    def list_all(self):
+    def list_all(self, owner_id=None):
         """Lista tasks com user e category carregados antecipadamente (sem N+1)."""
         stmt = select(Task).options(joinedload(Task.user), joinedload(Task.category))
+        stmt = self._scoped(stmt, owner_id)
         return self.session.execute(stmt).unique().scalars().all()
 
     def list_by_user(self, user_id):
@@ -40,11 +41,18 @@ class TaskRepository:
             stmt = stmt.where(Task.user_id == user_id)
         return self.session.execute(stmt).scalars().all()
 
-    def count(self):
-        return self.session.execute(select(func.count(Task.id))).scalar_one()
+    @staticmethod
+    def _scoped(stmt, owner_id):
+        if owner_id is None:
+            return stmt
+        return stmt.where(Task.user_id == owner_id)
 
-    def count_by_status(self, status):
-        stmt = select(func.count(Task.id)).where(Task.status == status)
+    def count(self, owner_id=None):
+        stmt = self._scoped(select(func.count(Task.id)), owner_id)
+        return self.session.execute(stmt).scalar_one()
+
+    def count_by_status(self, status, owner_id=None):
+        stmt = self._scoped(select(func.count(Task.id)).where(Task.status == status), owner_id)
         return self.session.execute(stmt).scalar_one()
 
     def count_by_priority(self, priority):
@@ -65,12 +73,13 @@ class TaskRepository:
         )
         return self.session.execute(stmt).scalar_one()
 
-    def list_with_due_date(self):
+    def list_with_due_date(self, owner_id=None):
         """Só as tasks que podem estar atrasadas — filtro no banco, não em Python."""
         stmt = select(Task).where(
             Task.due_date.isnot(None),
             Task.status.notin_(('done', 'cancelled')),
         )
+        stmt = self._scoped(stmt, owner_id)
         return self.session.execute(stmt).scalars().all()
 
     def productivity_by_user(self):
@@ -97,12 +106,13 @@ class TaskRepository:
         )
         return dict(self.session.execute(stmt).all())
 
-    def count_grouped_by_category(self):
+    def count_grouped_by_category(self, owner_id=None):
         stmt = (
             select(Task.category_id, func.count(Task.id))
             .where(Task.category_id.isnot(None))
             .group_by(Task.category_id)
         )
+        stmt = self._scoped(stmt, owner_id)
         return dict(self.session.execute(stmt).all())
 
     def detach_category(self, category_id):

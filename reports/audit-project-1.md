@@ -70,11 +70,15 @@ def executar_query():
   retorna zero). `get_todos_usuarios` e `get_usuario_por_id` incluem o campo `senha`
   na resposta.
 - **Impact:** `GET /usuarios` — endpoint público — devolve e-mail e senha de todos os
-  usuários, inclusive `admin@loja.com / admin123` (confirmado no baseline). Qualquer
+  usuários, inclusive `admin@loja.com / admin123` (confirmado no baseline). Além disso,
+  o seed cria a conta **admin** com senha literal (`database.py:76`): mesmo com hash e
+  autorização, qualquer leitor do repositório entraria como administrador. Qualquer
   vazamento do arquivo `loja.db` expõe as senhas diretamente.
 - **Recommendation:** Gravar com `generate_password_hash`, verificar com
   `check_password_hash` em código (buscando só por e-mail) e serializar usuário por
-  lista de permissão sem `senha` (playbook P-03).
+  lista de permissão sem `senha` (playbook P-03). A conta admin deve vir de
+  `ADMIN_EMAIL`/`ADMIN_PASSWORD` do ambiente (obrigatórias em produção) e as contas de
+  exemplo só existir fora de produção (playbook P-02).
 
 ```python
 "email": row["email"],

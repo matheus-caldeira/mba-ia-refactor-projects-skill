@@ -48,16 +48,27 @@ seed são gravadas com hash.
 |---|---|
 | Público | `GET /`, `GET /health`, `GET /produtos`, `GET /produtos/busca`, `GET /produtos/<id>`, `POST /usuarios`, `POST /login` |
 | Próprio usuário ou admin | `GET /usuarios/<id>`, `GET /pedidos/usuario/<id>`, `POST /pedidos` (o `usuario_id` do corpo tem de ser o do token) |
-| Somente admin (`tipo = admin`) | `GET /usuarios`, `GET /pedidos`, `PUT /pedidos/<id>/status`, `GET /relatorios/vendas`, `POST/PUT/DELETE /produtos`, `POST /admin/reset-db` |
+| Somente admin (`tipo = admin`) | `GET /usuarios`, `GET /pedidos`, `PUT /pedidos/<id>/status`, `GET /relatorios/vendas`, `POST/PUT/DELETE /produtos` |
+| Admin **e** `ENABLE_RESET_DB=true` (nunca em produção) | `POST /admin/reset-db` |
 
 Sem token → 401; token de outro usuário ou sem papel suficiente → 403.
+
+### Contas criadas no primeiro boot
+
+- **Admin:** `ADMIN_EMAIL` / `ADMIN_PASSWORD` (e `ADMIN_NAME`). Com `APP_ENV=production`
+  são obrigatórias — o boot falha sem elas. Fora de produção o default é
+  `admin@loja.com` / `admin123`, **somente para desenvolvimento**.
+- **Clientes de exemplo** (`joao@email.com` / `123456`, `maria@email.com` / `senha123`):
+  criados só fora de produção.
 
 ## Mudanças intencionais de contrato
 
 - As rotas da tabela acima que não são públicas passaram a exigir token (no original
   tudo era aberto e o login não emitia credencial).
 - `POST /admin/query` (executor de SQL arbitrário) foi **removido** → 404.
-- `POST /admin/reset-db` exige admin e responde 403 com `APP_ENV=production`.
+- `POST /admin/reset-db` exige admin **e** `ENABLE_RESET_DB=true` (desligado por
+  padrão e sempre desligado em produção) → 403 caso contrário.
+- Em produção não há mais conta admin com senha conhecida nem clientes de exemplo.
 - A baixa de estoque é atômica (UPDATE condicional); quantidades repetidas do mesmo
   produto no pedido são somadas antes de validar.
 - `GET /health` deixou de expor `secret_key`, `debug`, `db_path` e `ambiente`.

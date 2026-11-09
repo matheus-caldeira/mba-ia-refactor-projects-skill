@@ -34,7 +34,7 @@ def user_report(user_id):
 @report_bp.route('/categories', methods=['GET'])
 @require_auth
 def get_categories():
-    return jsonify(_categories().list()), 200
+    return jsonify(_categories().list(actor=current_user())), 200
 
 
 @report_bp.route('/categories', methods=['POST'])

@@ -23,6 +23,7 @@ def create_app(config=None):
     )
 
     app = Flask(__name__)
+    app.extensions["settings"] = config
     app.config["SECRET_KEY"] = config.SECRET_KEY
     app.config["DEBUG"] = config.DEBUG
     CORS(app, origins=config.CORS_ORIGINS)
@@ -33,7 +34,7 @@ def create_app(config=None):
     # Schema e seed uma única vez, no boot.
     conexao = database.conectar(config.DATABASE_PATH)
     try:
-        database.inicializar(conexao)
+        database.inicializar(conexao, config)
     finally:
         conexao.close()
 

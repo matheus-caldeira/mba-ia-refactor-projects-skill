@@ -37,3 +37,8 @@ def ensure_can_assign(actor, user_id):
     require_actor(actor)
     if user_id and user_id != actor.id and not is_supervisor(actor):
         raise ForbiddenError('Apenas admin ou manager podem atribuir tasks a outro usuário')
+
+
+def read_scope(actor):
+    require_actor(actor)
+    return None if is_supervisor(actor) else actor.id

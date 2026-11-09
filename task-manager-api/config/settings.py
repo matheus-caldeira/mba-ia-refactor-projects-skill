@@ -71,6 +71,18 @@ class Settings:
         # registra a notificação e loga, em vez de falhar silenciosamente.
         self.EMAIL_ENABLED = _as_bool(env.get('EMAIL_ENABLED'), default=False)
 
+        self.ADMIN_NAME = env.get('ADMIN_NAME', 'Admin')
+        self.ADMIN_EMAIL = self._admin_credential(env, 'ADMIN_EMAIL')
+        self.ADMIN_PASSWORD = self._admin_credential(env, 'ADMIN_PASSWORD')
+
+    def _admin_credential(self, env, name):
+        value = (env.get(name) or '').strip()
+        if not value and self.IS_PRODUCTION:
+            raise MissingConfigError(
+                f'Variável de ambiente obrigatória ausente em produção: {name}'
+            )
+        return value or None
+
     def _secret(self, env, name):
         value = env.get(name)
         if value:

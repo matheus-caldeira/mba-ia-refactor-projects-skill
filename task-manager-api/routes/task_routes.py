@@ -12,7 +12,7 @@ def _controller():
 @task_bp.route('/tasks', methods=['GET'])
 @require_auth
 def get_tasks():
-    return jsonify(_controller().list()), 200
+    return jsonify(_controller().list(actor=current_user())), 200
 
 
 @task_bp.route('/tasks/search', methods=['GET'])
@@ -24,6 +24,7 @@ def search_tasks():
             status=request.args.get('status', ''),
             priority=request.args.get('priority', ''),
             user_id=request.args.get('user_id', ''),
+            actor=current_user(),
         )
     ), 200
 
@@ -31,13 +32,13 @@ def search_tasks():
 @task_bp.route('/tasks/stats', methods=['GET'])
 @require_auth
 def task_stats():
-    return jsonify(_controller().stats()), 200
+    return jsonify(_controller().stats(actor=current_user())), 200
 
 
 @task_bp.route('/tasks/<int:task_id>', methods=['GET'])
 @require_auth
 def get_task(task_id):
-    return jsonify(_controller().get(task_id)), 200
+    return jsonify(_controller().get(task_id, actor=current_user())), 200
 
 
 @task_bp.route('/tasks', methods=['POST'])

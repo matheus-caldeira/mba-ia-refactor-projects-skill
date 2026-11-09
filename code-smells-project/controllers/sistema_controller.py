@@ -2,7 +2,7 @@
 
 import logging
 
-from config import settings
+from config.runtime import config_atual
 from middlewares.errors import ForbiddenError
 from models import database
 
@@ -15,12 +15,12 @@ def health():
         "status": "ok",
         "database": "connected",
         "counts": database.contar_registros(),
-        "versao": settings.APP_VERSION,
+        "versao": config_atual().APP_VERSION,
     }
 
 
 def resetar_banco():
-    if settings.IS_PRODUCTION:
-        raise ForbiddenError("Operação administrativa desabilitada em produção")
+    if not config_atual().ENABLE_RESET_DB:
+        raise ForbiddenError("Reset desabilitado: defina ENABLE_RESET_DB=true (nunca em produção)")
     database.resetar()
     logger.warning("Banco de dados resetado via rota administrativa")

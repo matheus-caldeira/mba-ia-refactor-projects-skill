@@ -10,8 +10,12 @@ import os
 import secrets
 
 
-def _env_bool(nome, padrao="false"):
-    return os.environ.get(nome, padrao).strip().lower() in ("1", "true", "yes", "on")
+DEV_ADMIN_EMAIL = "admin@loja.com"
+DEV_ADMIN_PASSWORD = "admin123"
+
+
+def _env_bool_from(env, nome, padrao="false"):
+    return env.get(nome, padrao).strip().lower() in ("1", "true", "yes", "on")
 
 
 class ConfigError(RuntimeError):
@@ -27,7 +31,7 @@ class Settings:
 
         self.HOST = env.get("HOST", "127.0.0.1")
         self.PORT = int(env.get("PORT", "5000"))
-        self.DEBUG = _env_bool("DEBUG") and not self.IS_PRODUCTION
+        self.DEBUG = _env_bool_from(env, "DEBUG") and not self.IS_PRODUCTION
 
         self.DATABASE_PATH = env.get("DATABASE_PATH", "loja.db")
         self.CORS_ORIGINS = env.get("CORS_ORIGINS", "*")
@@ -37,6 +41,24 @@ class Settings:
         self.TOKEN_TTL_SECONDS = int(env.get("TOKEN_TTL_SECONDS", "3600"))
 
         self.APP_VERSION = env.get("APP_VERSION", "1.0.0")
+
+        self.ENABLE_RESET_DB = _env_bool_from(env, "ENABLE_RESET_DB") and not self.IS_PRODUCTION
+        self.SEED_DEMO_USERS = not self.IS_PRODUCTION
+
+        self.ADMIN_NAME = env.get("ADMIN_NAME", "Admin")
+        self.ADMIN_EMAIL = self._credencial_admin(env, "ADMIN_EMAIL", DEV_ADMIN_EMAIL)
+        self.ADMIN_PASSWORD = self._credencial_admin(env, "ADMIN_PASSWORD", DEV_ADMIN_PASSWORD)
+
+    def _credencial_admin(self, env, nome, padrao_dev):
+        valor = env.get(nome, "").strip()
+        if valor:
+            return valor
+        if self.IS_PRODUCTION:
+            raise ConfigError(
+                f"Variável de ambiente obrigatória ausente: {nome}. "
+                "Em produção a conta administradora só é criada com credenciais do ambiente."
+            )
+        return padrao_dev
 
     def _resolver_secret_key(self, env):
         chave = env.get("SECRET_KEY", "").strip()

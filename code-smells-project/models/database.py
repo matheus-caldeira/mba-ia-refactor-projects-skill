@@ -11,6 +11,7 @@ from flask import g
 from werkzeug.security import generate_password_hash
 
 from config import settings
+from config.runtime import config_atual
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS produtos (
@@ -66,8 +67,7 @@ PRODUTOS_SEED = [
     ("Camiseta Dev", "Camiseta estampa código", 59.90, 100, "vestuario"),
 ]
 
-USUARIOS_SEED = [
-    ("Admin", "admin@loja.com", "admin123", "admin"),
+CLIENTES_DEMO = [
     ("João Silva", "joao@email.com", "123456", "cliente"),
     ("Maria Santos", "maria@email.com", "senha123", "cliente"),
 ]
@@ -75,7 +75,7 @@ USUARIOS_SEED = [
 
 def conectar(caminho=None):
     """Abre uma conexão nova. Usado pelo app e pelos testes."""
-    conexao = sqlite3.connect(caminho or settings.DATABASE_PATH)
+    conexao = sqlite3.connect(caminho or config_atual().DATABASE_PATH)
     conexao.row_factory = sqlite3.Row
     conexao.execute("PRAGMA foreign_keys = ON")
     return conexao
@@ -93,8 +93,9 @@ def close_db(exception=None):
         db.close()
 
 
-def inicializar(conexao):
+def inicializar(conexao, config=None):
     """Cria o schema e popula o seed apenas se o banco estiver vazio."""
+    config = config or settings
     conexao.executescript(SCHEMA)
     conexao.commit()
 
@@ -105,16 +106,16 @@ def inicializar(conexao):
             PRODUTOS_SEED,
         )
 
-    if conexao.execute("SELECT COUNT(*) FROM usuarios").fetchone()[0] == 0:
-        # As senhas de exemplo entram já com hash — nunca em texto puro (AP-03).
-        usuarios = [
-            (nome, email, generate_password_hash(senha), tipo)
-            for nome, email, senha, tipo in USUARIOS_SEED
-        ]
-        conexao.executemany(
-            "INSERT INTO usuarios (nome, email, senha, tipo) VALUES (?, ?, ?, ?)",
-            usuarios,
-        )
+    usuarios = [(config.ADMIN_NAME, config.ADMIN_EMAIL, config.ADMIN_PASSWORD, "admin")]
+    if config.SEED_DEMO_USERS:
+        usuarios += CLIENTES_DEMO
+    for nome, email, senha, tipo in usuarios:
+        existe = conexao.execute("SELECT 1 FROM usuarios WHERE email = ?", (email,)).fetchone()
+        if existe is None:
+            conexao.execute(
+                "INSERT INTO usuarios (nome, email, senha, tipo) VALUES (?, ?, ?, ?)",
+                (nome, email, generate_password_hash(senha), tipo),
+            )
 
     conexao.commit()
 

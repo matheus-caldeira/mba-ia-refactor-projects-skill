@@ -15,10 +15,13 @@ from models.clock import utcnow
 from models.task import Task
 from models.user import User
 
-SEED_PASSWORD = os.environ.get('SEED_PASSWORD', 'dev-password-123')
+DEV_ONLY_SEED_PASSWORD = 'dev-password-123'
+SEED_PASSWORD = os.environ.get('SEED_PASSWORD', DEV_ONLY_SEED_PASSWORD)
 
 
 def seed_data():
+    if app.extensions['settings'].IS_PRODUCTION:
+        raise SystemExit('seed.py popula contas de exemplo com senha conhecida e só roda fora de produção.')
     init_database(app)
     with app.app_context():
         Task.query.delete()

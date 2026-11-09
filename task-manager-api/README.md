@@ -52,8 +52,9 @@ Sobe em `http://127.0.0.1:5000` (`HOST`/`PORT` configuráveis). O banco SQLite f
 | Acesso | Rotas |
 |---|---|
 | Público | `GET /`, `GET /health`, `POST /login`, `POST /users` (cadastro só com `role: user`) |
-| Autenticado | `GET /tasks`, `/tasks/<id>`, `/tasks/search`, `/tasks/stats`, `POST /tasks`, `GET /categories` |
-| Dono da task ou admin/manager | `PUT /tasks/<id>`, `DELETE /tasks/<id>`; atribuir task a outro usuário |
+| Autenticado, **com escopo do ator** | `GET /tasks`, `GET /tasks/search`, `GET /tasks/stats`, `GET /categories` (o `task_count`) — usuário comum vê/conta só as próprias tasks; admin/manager veem tudo. `search?user_id=<outro>` por usuário comum → 403 |
+| Autenticado | `POST /tasks` |
+| Dono da task ou admin/manager | `GET /tasks/<id>`, `PUT /tasks/<id>`, `DELETE /tasks/<id>`; atribuir task a outro usuário |
 | Próprio usuário ou admin/manager | `GET /users/<id>`, `GET /users/<id>/tasks`, `GET /reports/user/<id>` |
 | Próprio usuário ou admin | `PUT /users/<id>` — `role`/`active` só admin; trocar a própria senha exige `current_password` |
 | Admin/manager | `GET /users`, `GET /reports/summary`, `POST/PUT/DELETE /categories` |
@@ -61,11 +62,25 @@ Sobe em `http://127.0.0.1:5000` (`HOST`/`PORT` configuráveis). O banco SQLite f
 
 Sem token → 401; papel ou dono incorreto → 403.
 
+`GET /tasks/stats` continua disponível a qualquer autenticado (como no original, que
+não tinha restrição), mas para usuário comum as contagens cobrem só as tasks dele;
+restringir a rota a admin/manager quebraria o uso legítimo do próprio painel.
+
+### Contas
+
+- **Admin de produção:** `ADMIN_EMAIL` / `ADMIN_PASSWORD` (e `ADMIN_NAME`) são
+  obrigatórias com `APP_ENV=production` — o boot falha sem elas — e a conta é garantida
+  no boot. Fora de produção são opcionais.
+- **`seed.py`:** cria contas de exemplo com `SEED_PASSWORD` (default `dev-password-123`,
+  **somente desenvolvimento**) e se recusa a rodar com `APP_ENV=production`.
+
 ## Mudanças intencionais de contrato
 
 - As rotas não públicas da tabela acima passaram a exigir token (no original nenhuma
   rota verificava identidade). Com o token adequado, os 35 cenários do roteiro de
   validação respondem com os mesmos status do original.
+- Listagem, busca, estatísticas e contagens por categoria passaram a ter escopo do
+  ator para usuários comuns; `GET /tasks/<id>` de outro usuário → 403.
 - O hash de senha não aparece mais em nenhuma resposta (`GET/POST/PUT /users`, `/login`).
 - `/login` devolve um token assinado com expiração (antes: `fake-jwt-token-<id>`).
 - `POST /users` com `role` diferente de `user` exige token de admin (403 caso contrário).

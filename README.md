@@ -139,7 +139,7 @@ referem-se ao commit `6d1ce62`.
    (cria camadas) e um parcialmente estruturado (preserva o que funciona, extrai o que
    vaza, ativa o que está morto, apaga código morto).
 5. **A mesma skill, byte a byte, nos 3 projetos** — `SKILL.md` com o mesmo MD5
-   (`bf8072e861dfdedc9b0529c62c5b3486`) nas três cópias.
+   (`d3a3cf3ed782f6b071f2bcfe1217e317`) nas três cópias.
 
 ### Desafios encontrados e como resolvi
 
@@ -235,7 +235,7 @@ database.py               controllers/               produto, usuario, pedido/re
                           services/                  pedido_service (transação, estoque), notificador
                           routes/                    Blueprints (camada View)
                           middlewares/               errors, error_handler, auth (token, require_admin)
-                          tests/                     pytest (25 testes)
+                          tests/                     pytest (32 testes)
 ```
 
 **Projeto 2** — 3 arquivos (180 linhas) → 26 arquivos (1.136 linhas)
@@ -292,7 +292,7 @@ models/ routes/ services/ utils/       + config/settings.py     configuração �
 | Entry point claro | [x] | [x] | [x] |
 | Aplicação inicia sem erros | [x] | [x] | [x] |
 | Endpoints originais respondem (com token quando exigido) | [x] 33/33 | [x] 10/10 | [x] 35/35 |
-| Suíte automatizada (401/403, concorrência) | [x] 25 testes | [x] 7 testes | [x] 32 testes |
+| Suíte automatizada (401/403, escopo, config de produção, concorrência) | [x] 32 testes | [x] 7 testes | [x] 44 testes |
 
 ### Logs das aplicações rodando após a refatoração
 
@@ -316,7 +316,7 @@ GET    /usuarios sem token     -> 401 ; token de cliente -> 403
 GET    /pedidos/usuario/3 com token do usuário 2 -> 403
 cancelar pedido de 3 notebooks: estoque 10 -> 7 -> 10                                           (antes: nunca devolvia)
 diff de status antes/depois (33 chamadas): só /login com SQLi (200→401) e /admin/query (200→404)
-pytest: 25 passed — inclui 8 pedidos simultâneos de 2 unidades com estoque 8: 4 x 201, 4 x 400, estoque final 0
+pytest: 32 passed — inclui 8 pedidos simultâneos de 2 unidades com estoque 8: 4 x 201, 4 x 400, estoque final 0
 ```
 
 **Projeto 2** — `PORT=2534 ADMIN_API_TOKEN=dev-admin-token npm start`
@@ -347,7 +347,7 @@ DELETE /users/3 sem token      -> 401 | {"error":"Token ausente"}
 DELETE /users/3 token de user  -> 403 | {"error":"Acesso negado"}
 DELETE /users/4 token de admin -> 200 | {"message":"Usuário deletado com sucesso"}
 diff de status antes/depois (35 chamadas, com token do admin): nenhuma diferença; sem token -> 401
-pytest: 32 passed — matriz de autorização (401/403) de todas as rotas, PUT /users por terceiro -> 403
+pytest: 44 passed — matriz de autorização (401/403) de todas as rotas, escopo de leitura, PUT /users por terceiro -> 403
 queries por requisição (antes -> depois): /tasks 17 -> 1, /users 4 -> 2, /categories 5 -> 2
 ```
 
@@ -382,10 +382,13 @@ corrigidos (e não apenas documentados), com testes:
 | [MÉDIA] Corrida no estoque (checagem antes do UPDATE) | P1 | UPDATE condicional `... AND estoque >= ?` com conferência de `rowcount` e rollback; quantidades repetidas somadas antes de validar. Teste com 8 pedidos simultâneos |
 | [CRÍTICA] `PUT /users/<id>` sem `@require_auth` e sem checagem do ator | P3 | `require_auth` + próprio usuário ou admin (senão 403); `role`/`active` só admin; troca da própria senha exige `current_password`. Mesmo critério aplicado a todas as rotas de usuários, tasks, relatórios e categorias (tabela no README do projeto) |
 | Revisão do mesmo padrão | P2 | As únicas rotas privilegiadas (relatório financeiro e exclusão de usuário) já exigiam token admin; não há rota de alteração de usuário. Ficaram cobertas por testes |
+| [ALTA] IDOR de **leitura**: `GET /tasks`, `/tasks/search`, `/tasks/stats` e `/tasks/<id>` devolviam tasks de todos a qualquer autenticado | P3 | O ator passa a chegar ao controller; `GET /tasks/<id>` usa a mesma política de PUT/DELETE (dono ou admin/manager); listagem, busca, estatísticas e o `task_count` de categorias têm escopo do ator para usuário comum; `search?user_id=<outro>` → 403. Supervisor continua vendo tudo |
+| [ALTA] Seed com conta admin de senha conhecida tornava o `require_admin` inócuo | P1, P3 | P1: admin só de `ADMIN_EMAIL`/`ADMIN_PASSWORD` (obrigatórias em produção, boot falha sem elas; default explícito só em dev), clientes de exemplo só fora de produção e `/admin/reset-db` atrás de `ENABLE_RESET_DB=false` por padrão. P3: mesmo critério para o admin no boot e `seed.py` recusa rodar em produção. Também corrigido: no P1 o `create_app(config)` passou a valer para conexão, token e flags (antes lia o `settings` global) |
 
 A skill foi atualizada para pegar esse padrão nos três projetos: o AP-05 agora cobre
-autorização por objeto (IDOR) e campos privilegiados no payload, o AP-13 cobre corrida
-check-then-act, o playbook mostra as duas correções e a Fase 3 exige verificar 401/403
+autorização por objeto (IDOR) em escrita **e em leitura** (listagens, buscas e
+estatísticas sem escopo do ator) e campos privilegiados no payload, o AP-02 cobre seed
+de conta privilegiada com senha conhecida, o AP-13 cobre corrida check-then-act, o playbook mostra as duas correções e a Fase 3 exige verificar 401/403
 de cada rota protegida.
 
 ### Limites desta entrega

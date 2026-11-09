@@ -2,8 +2,8 @@
 
 from datetime import datetime
 
-from controllers.policies import ensure_can_assign, ensure_task_access
-from errors import NotFoundError, ValidationError
+from controllers.policies import ensure_can_assign, ensure_task_access, read_scope
+from errors import ForbiddenError, NotFoundError, ValidationError
 from models.clock import utcnow
 from models.task import MAX_PRIORITY, MIN_PRIORITY, VALID_STATUSES, Task
 
@@ -22,9 +22,9 @@ class TaskController:
 
     # ---------- leitura ----------
 
-    def list(self):
+    def list(self, actor=None):
         """GET /tasks — inclui overdue, user_name e category_name."""
-        tasks = self._tasks.list_all()
+        tasks = self._tasks.list_all(owner_id=read_scope(actor))
         result = []
         for t in tasks:
             data = t.to_dict()
@@ -34,33 +34,41 @@ class TaskController:
             result.append(data)
         return result
 
-    def get(self, task_id):
+    def get(self, task_id, actor=None):
         """GET /tasks/<id> — to_dict() + overdue."""
         task = self._require_task(task_id)
+        ensure_task_access(actor, task)
         data = task.to_dict()
         data['overdue'] = task.is_overdue()
         return data
 
-    def search(self, query=None, status=None, priority=None, user_id=None):
+    def search(self, query=None, status=None, priority=None, user_id=None, actor=None):
         """GET /tasks/search — contrato original devolve to_dict() puro."""
+        requested_user = self._parse_int(user_id, 'user_id inválido')
+        scope = read_scope(actor)
+        if scope is not None:
+            if requested_user is not None and requested_user != scope:
+                raise ForbiddenError('Acesso negado')
+            requested_user = scope
         tasks = self._tasks.search(
             query=query,
             status=status,
             priority=self._parse_int(priority, 'Prioridade inválida'),
-            user_id=self._parse_int(user_id, 'user_id inválido'),
+            user_id=requested_user,
         )
         return [t.to_dict() for t in tasks]
 
-    def stats(self):
-        total = self._tasks.count()
-        done = self._tasks.count_by_status('done')
-        overdue = sum(1 for t in self._tasks.list_with_due_date() if t.is_overdue())
+    def stats(self, actor=None):
+        scope = read_scope(actor)
+        total = self._tasks.count(owner_id=scope)
+        done = self._tasks.count_by_status('done', owner_id=scope)
+        overdue = sum(1 for t in self._tasks.list_with_due_date(owner_id=scope) if t.is_overdue())
         return {
             'total': total,
-            'pending': self._tasks.count_by_status('pending'),
-            'in_progress': self._tasks.count_by_status('in_progress'),
+            'pending': self._tasks.count_by_status('pending', owner_id=scope),
+            'in_progress': self._tasks.count_by_status('in_progress', owner_id=scope),
             'done': done,
-            'cancelled': self._tasks.count_by_status('cancelled'),
+            'cancelled': self._tasks.count_by_status('cancelled', owner_id=scope),
             'overdue': overdue,
             'completion_rate': round((done / total) * 100, 2) if total > 0 else 0,
         }

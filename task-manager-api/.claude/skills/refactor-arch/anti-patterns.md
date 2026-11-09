@@ -88,6 +88,23 @@ recomendação inclui rotacionar, não só mover para env var.
 **Agravante:** segredo devolvido por endpoint HTTP (ex.: `/health` retornando
 `secret_key`) é vazamento ativo, não apenas exposição no repositório.
 
+**Seed de conta privilegiada com senha conhecida também é credencial hardcoded.**
+Um seed/migration/script de boot que cria `admin@...` com senha literal (no código, no
+README ou no `.env.example`) anula qualquer `require_admin`: quem leu o repositório
+entra como admin. Procure o papel privilegiado junto de uma senha literal:
+
+```bash
+# Papel privilegiado como literal — abra cada ocorrência e procure a senha ao lado
+grep -rnE --exclude-dir={venv,.venv,node_modules,.git,.claude,dist,__pycache__} "['\"](admin|root|superuser)['\"]" --include='*.py' --include='*.js' --include='*.sql' .
+grep -rnE --exclude-dir={venv,.venv,node_modules,.git,.claude,dist,__pycache__} "set_password\(['\"]|SEED_.*PASSWORD.*['\"][^'\"]+['\"]" --include='*.py' --include='*.js' .
+```
+
+Correção esperada: conta administradora criada só com credenciais do ambiente,
+obrigatórias em produção (o boot falha sem elas); contas de exemplo com senha
+conhecida só fora de produção, com o default documentado como "somente
+desenvolvimento"; operações destrutivas de manutenção atrás de flag desligado por
+padrão.
+
 **Correção:** playbook P-02.
 
 ---
@@ -187,6 +204,12 @@ recurso:
 - rota que recebe id de usuário (path `/<id>`, `usuario_id`/`user_id` no corpo ou na
   query) e lê ou altera dados dele **sem comparar com o usuário autenticado**
   (próprio usuário ou papel privilegiado);
+- **IDOR em leitura**: listagens, buscas, estatísticas, contagens e detalhes por id
+  (`GET /tasks`, `/tasks/search`, `/tasks/stats`, `/tasks/<id>`, contagens embutidas em
+  outra entidade) que devolvem registros de todos os usuários a qualquer autenticado.
+  A regra de leitura tem de ser a mesma da escrita: o controller recebe o ator e aplica
+  um escopo (`WHERE user_id = :ator`) quando ele não é supervisor; filtro explícito por
+  outro usuário vira 403. Leitura protegida só por "estar logado" é achado;
 - update que aceita do payload campos privilegiados (`role`, `tipo`, `is_admin`,
   `active`) sem exigir papel de admin;
 - troca de senha pelo próprio usuário sem exigir a senha atual;

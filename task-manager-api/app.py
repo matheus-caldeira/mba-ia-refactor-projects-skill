@@ -15,6 +15,7 @@ from database import db
 from middlewares.auth import load_current_user
 from middlewares.error_handler import register_error_handlers
 from models.clock import utcnow
+from models.user import User
 from repositories.category_repository import CategoryRepository
 from repositories.task_repository import TaskRepository
 from repositories.user_repository import UserRepository
@@ -92,6 +93,18 @@ def init_database(app):
         os.makedirs(os.path.dirname(uri[len('sqlite:///'):]), exist_ok=True)
     with app.app_context():
         db.create_all()
+        ensure_admin(app.extensions['settings'])
+
+
+def ensure_admin(settings):
+    if not settings.ADMIN_EMAIL or not settings.ADMIN_PASSWORD:
+        return
+    if User.query.filter_by(email=settings.ADMIN_EMAIL).first():
+        return
+    admin = User(name=settings.ADMIN_NAME, email=settings.ADMIN_EMAIL, role='admin')
+    admin.set_password(settings.ADMIN_PASSWORD)
+    db.session.add(admin)
+    db.session.commit()
 
 
 app = create_app()
