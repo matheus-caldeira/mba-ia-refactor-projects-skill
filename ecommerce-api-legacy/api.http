@@ -1,4 +1,5 @@
 @baseUrl = http://localhost:3000
+@adminToken = dev-admin-token
 
 ### Checkout - sucesso
 POST {{baseUrl}}/api/checkout
@@ -24,8 +25,13 @@ Content-Type: application/json
   "card": "5111222233334444"
 }
 
-### Relatório financeiro administrativo
+### Relatório financeiro administrativo (agora exige autenticação)
+GET {{baseUrl}}/api/admin/financial-report
+Authorization: Bearer {{adminToken}}
+
+### Relatório financeiro sem token -> 401
 GET {{baseUrl}}/api/admin/financial-report
 
-### Deletar usuário
+### Deletar usuário (agora exige autenticação)
 DELETE {{baseUrl}}/api/users/1
+Authorization: Bearer {{adminToken}}
