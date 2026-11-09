@@ -678,6 +678,19 @@ CREATE TABLE enrollments (
 );
 ```
 
+**Cuidado com conexão única compartilhada:** em Node a mesma conexão atende
+requisições concorrentes; dois `BEGIN` intercalados falham com "cannot start a
+transaction within a transaction". Serialize as transações (fila de Promises) ou use
+uma conexão por unidade de trabalho:
+
+```javascript
+transaction(work) {
+    const pending = this.queue.then(() => this.runTransaction(work));
+    this.queue = pending.catch(() => undefined);
+    return pending;
+}
+```
+
 Em Python com `sqlite3`, o equivalente é `try: ... conn.commit() except: conn.rollback(); raise`;
 com SQLAlchemy, um único `session.commit()` ao final do caso de uso (e `rollback()`
 no handler de erro central). Decida explicitamente entre **cascade** (apagar
