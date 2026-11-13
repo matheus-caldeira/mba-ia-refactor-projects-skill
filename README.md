@@ -14,9 +14,12 @@ Node.js/Express.
 | Relatórios de auditoria (saída da Fase 2) | `reports/audit-project-{1,2,3}.md` |
 | Código refatorado (saída da Fase 3) | `code-smells-project/`, `ecommerce-api-legacy/`, `task-manager-api/` |
 | Código original (antes da Fase 3) | commit `6d1ce62` — base de todas as citações `arquivo:linha` dos relatórios |
+| Evidências das execuções | `docs/evidencias/` — saída final de cada sessão e log de validação |
 
-O histórico do git segue a ordem do processo: skill + auditoria de cada projeto num
-commit, a refatoração no commit seguinte, e as iterações da skill depois.
+O histórico do git segue a ordem do processo: criação e iterações da skill; depois, o
+commit `0144531` devolve os três projetos ao código original mantendo só a skill, e a
+skill é executada de verdade com `claude "/refactor-arch"` numa sessão por projeto —
+um commit com o resultado de cada execução (relatório da Fase 2 + código da Fase 3).
 
 ---
 
@@ -149,7 +152,7 @@ referem-se ao commit `6d1ce62`.
   copiada 6 vezes enquanto `Task.is_overdue()` existia sem uso.
 - **Trocar API deprecated sem mudar comportamento.** `datetime.now(timezone.utc)`
   devolve datetime *aware*; as colunas guardam *naive*, e compará-los levanta
-  `TypeError`. A solução foi `models/clock.py`, que usa a API moderna e remove o
+  `TypeError`. A solução é um módulo de relógio (`utils/clock.py` na execução final), que usa a API moderna e remove o
   `tzinfo`.
 - **Greps que dão falso negativo ou falso positivo.** No zsh, `--include=*.py` sem
   aspas aborta com "no matches found" e parece "projeto limpo"; e a própria skill
@@ -167,109 +170,118 @@ referem-se ao commit `6d1ce62`.
   mantido, exceto quando a auditoria exige o contrário (remover executor de SQL, parar
   de vazar campo sensível, exigir autenticação em operação destrutiva). Cada exceção
   está listada no README de cada projeto.
+- **Iteração por revisão de segurança.** Uma revisão automática de segurança sobre a
+  primeira rodada de refatorações achou o que a skill ainda não pedia: IDOR de leitura
+  (listagens e buscas sem escopo do ator), seed com conta admin de senha conhecida e
+  corrida check-then-act no estoque. Em vez de só corrigir o código, atualizei a skill:
+  o AP-05 passou a cobrir autorização por objeto em escrita **e leitura** e campos
+  privilegiados no payload, o AP-02 cobre seed privilegiado com senha conhecida, o AP-13
+  cobre corrida check-then-act, o playbook mostra as correções e a Fase 3 exige
+  verificar 401/403 de cada rota protegida e escrita concorrente.
+- **Prova final: execução do zero.** Com a skill estabilizada, os três projetos voltaram
+  ao código original (commit `0144531`) e a skill foi executada em sessões novas do
+  Claude Code, uma por projeto, sem intervenção além do `y` da Fase 2. Os resultados
+  abaixo são dessas execuções.
 
 ---
 
 ## C) Resultados
 
-### Fase 1 — saída da análise
+Tudo nesta seção vem das execuções reais de `/refactor-arch`, uma sessão do Claude Code
+por projeto, partindo do código original. A saída final de cada sessão está em
+[`docs/evidencias/fase3-saida-das-sessoes.md`](docs/evidencias/fase3-saida-das-sessoes.md).
 
-```
-================================
-PHASE 1: PROJECT ANALYSIS
-================================
-Language:      Python 3.12
-Framework:     Flask 3.1.1
-Dependencies:  flask-cors 5.0.1, sqlite3 (stdlib)
-Domain:        E-commerce API (produtos, usuários, pedidos, relatório de vendas)
-Architecture:  Monolítica — 4 arquivos com camadas só nominais; SQL, regra e formatação em models.py
-Source files:  4 files analyzed (780 lines)
-DB tables:     produtos, usuarios, pedidos, itens_pedido
-================================
+### Fase 1 — análise
 
-================================
-PHASE 1: PROJECT ANALYSIS
-================================
-Language:      JavaScript (Node.js, CommonJS)
-Framework:     Express ^4.18.2
-Dependencies:  sqlite3 ^5.1.6 (banco em memória)
-Domain:        LMS — cursos online com checkout (matrícula + pagamento), relatório financeiro e auditoria
-Architecture:  Monolítica — God Class AppManager com banco, rotas e regra
-Source files:  3 files analyzed (180 lines)
-DB tables:     users, courses, enrollments, payments, audit_logs
-================================
+| | Projeto 1 | Projeto 2 | Projeto 3 |
+|---|---|---|---|
+| Linguagem | Python 3.12 | JavaScript (Node.js) | Python 3.12 |
+| Framework | Flask 3.1.1 (+ flask-cors 5.0.1) | Express 4.18.2 | Flask 3.0.0 (+ Flask-SQLAlchemy 3.1.1) |
+| Banco | SQLite via `sqlite3` cru | SQLite via `sqlite3` (callbacks) | SQLite via SQLAlchemy 2.x |
+| Domínio | E-commerce: produtos, usuários, pedidos, relatório de vendas | LMS: cursos, checkout (matrícula + pagamento), relatório financeiro | Task Manager: tarefas, usuários com papéis, categorias, relatórios |
+| Arquitetura | Monolítica, 4 arquivos por papel técnico sem fronteira | God Class `AppManager` | Parcialmente estruturada; rotas com ORM e regra, `services/`/`utils/` mortos |
+| Arquivos analisados | 4 (~780 linhas) | 3 (~180 linhas) | 15 (~1158 linhas) |
 
-================================
-PHASE 1: PROJECT ANALYSIS
-================================
-Language:      Python 3.12
-Framework:     Flask 3.0.0
-Dependencies:  Flask-SQLAlchemy 3.1.1, flask-cors 4.0.0, marshmallow 3.20.1 (não usado), python-dotenv (não usado)
-Domain:        Task Manager — tarefas com prioridade, prazo e categoria, usuários com papéis e relatórios de produtividade
-Architecture:  Parcialmente estruturada — models/routes/services/utils existem, mas as rotas acessam o ORM e concentram a regra
-Source files:  15 files analyzed (1158 lines)
-DB tables:     tasks, users, categories
-================================
-```
+### Resumo dos relatórios de auditoria (Fase 2)
 
-### Resumo dos relatórios de auditoria
+| Projeto | CRITICAL | HIGH | MEDIUM | LOW | Total | APIs deprecated |
+|---|---|---|---|---|---|---|
+| 1 — [`code-smells-project`](reports/audit-project-1.md) | 5 | 3 | 4 | 1 | **13** | nenhuma encontrada (varredura registrada no relatório) |
+| 2 — [`ecommerce-api-legacy`](reports/audit-project-2.md) | 5 | 2 | 5 | 1 | **13** | callbacks aninhados → `async/await` (#8) |
+| 3 — [`task-manager-api`](reports/audit-project-3.md) | 4 | 2 | 4 | 1 | **11** | `Model.query.get()` (SQLAlchemy 2.x) e `datetime.utcnow()` (Python 3.12) (#7) |
 
-| Projeto | Stack | CRITICAL | HIGH | MEDIUM | LOW | Total | APIs deprecated |
-|---|---|---|---|---|---|---|---|
-| 1 — `code-smells-project` | Python + Flask 3.1.1 | 5 | 3 | 4 | 4 | **16** | nenhuma encontrada (varredura registrada) |
-| 2 — `ecommerce-api-legacy` | Node.js + Express 4.18 | 5 | 2 | 5 | 3 | **15** | callbacks aninhados → async/await |
-| 3 — `task-manager-api` | Python + Flask 3.0.0 | 5 | 2 | 4 | 3 | **14** | `datetime.utcnow`, `Query.get`, `hashlib.md5` |
+Principais achados por projeto (todos com `arquivo:linha` do código original):
 
-Os três relatórios terminam com `Phase 2 complete. Proceed with refactoring (Phase 3)? [y/n]`.
+- **P1:** SQL Injection em todas as queries com parâmetro (login como admin com
+  `admin@loja.com' --`), `/admin/query` executando SQL arbitrário sem autenticação,
+  nenhuma autenticação/autorização (IDOR), senhas em texto puro devolvidas pela API,
+  `SECRET_KEY` vazada no `/health` com debug ligado em `0.0.0.0`.
+- **P2:** relatório financeiro e exclusão de usuários públicos, chave `pk_live` e senha do
+  banco no código, "hash" caseiro reversível, cartão e chave do gateway no log, God
+  Class `AppManager`.
+- **P3:** token `fake-jwt-token-<id>` que nenhuma rota verifica (qualquer um vira admin),
+  MD5 sem salt com o hash devolvido nas respostas, segredos SMTP e `SECRET_KEY` no
+  código, debug do Werkzeug exposto, rotas fazendo papel de controller e repositório.
+
+Os três relatórios terminam com `Phase 2 complete. Proceed with refactoring (Phase 3)? [y/n]`,
+e em todas as sessões nenhum arquivo do projeto foi alterado antes da resposta `y`.
 
 ### Antes / depois da estrutura
 
-**Projeto 1** — 4 arquivos (780 linhas) → 25 arquivos (1.201 linhas)
+Contagens sem testes, `venv/`, `node_modules/` e a skill.
+
+**Projeto 1** — 4 arquivos (780 linhas) → 30 arquivos (1.193 linhas) + 49 testes
 
 ```
-ANTES                     DEPOIS
-app.py                    app.py                     composition root (create_app)
-controllers.py            config/settings.py         env vars; SECRET_KEY obrigatória em produção
-models.py                 models/                    database (conexão por requisição), produto, usuario, pedido
-database.py               controllers/               produto, usuario, pedido/relatório, sistema
-                          services/                  pedido_service (transação, estoque), notificador
-                          routes/                    Blueprints (camada View)
-                          middlewares/               errors, error_handler, auth (token, require_admin)
-                          tests/                     pytest (32 testes)
+ANTES              DEPOIS
+app.py             app.py              composition root (create_app)
+controllers.py     config.py           Settings lidas do ambiente (+ leitor de .env)
+models.py          database.py         conexão por requisição, transaction(), schema com FK/UNIQUE/CHECK
+database.py        seed.py             admin vindo da config; demonstração só fora de produção
+                   errors.py           Validation/Unauthorized/Forbidden/NotFound/Conflict
+                   models/             produto, usuario, pedido, sistema — SQL parametrizado
+                   services/           pedido (checkout, cancelamento com estoque), relatório, auth, notificador
+                   controllers/        produto, usuario, pedido, sistema + acesso.py (dono/admin/escopo)
+                   routes/             Blueprints finos (camada View)
+                   middlewares/        auth (require_auth/require_admin), error_handler
+                   tests/              pytest
 ```
 
-**Projeto 2** — 3 arquivos (180 linhas) → 26 arquivos (1.136 linhas)
+**Projeto 2** — 3 arquivos (180 linhas) → 29 arquivos (810 linhas)
 
 ```
-ANTES                     DEPOIS
-src/app.js                src/server.js              entry point
-src/AppManager.js         src/app.js                 composition root (createApp)
-src/utils.js              src/config/                settings (fail-fast em produção)
-                          src/database/              conexão com Promises + transação, migrations (FKs), seed
-                          src/models/                user, course, enrollment, payment, audit-log
-                          src/services/              checkout, financial-report, user
-                          src/controllers/           checkout, admin, user
-                          src/routes/                Routers (camada View)
-                          src/middlewares/           admin-auth, async-handler, error-handler
-                          src/gateways/ src/security/ src/errors/
+ANTES                 DEPOIS
+src/app.js            src/app.js            composition root: createApp() + start()
+src/AppManager.js     src/config/           settings.js — env; segredos sem default
+src/utils.js          src/database/         connection (Promise + fila de transações), schema (FK + CASCADE), seed
+                      src/domain/           constants (Roles, PaymentStatus), errors
+                      src/models/           user, course, enrollment, payment, audit-log
+                      src/services/         checkout, financial-report, payment-gateway, password-hasher (scrypt), token
+                      src/controllers/      checkout, report, user, auth
+                      src/validators/       request-validators
+                      src/routes/           Express Routers (camada View)
+                      src/middlewares/      auth (authenticate/requireRole), error-handler, async-handler
 ```
 
-**Projeto 3** — 15 arquivos (1.158 linhas) → 30 arquivos (1.705 linhas)
+**Projeto 3** — 15 arquivos (1.158 linhas) → 33 arquivos (1.487 linhas) + 46 testes
 
 ```
-ANTES                                  DEPOIS
-models/ routes/ services/ utils/       + config/settings.py     configuração única
-(rotas com ORM e regra,                + controllers/           task, user, category, report
- services/ e utils/ sem uso)           + repositories/          consultas sem N+1
-                                       + middlewares/           auth (require_role) e error handler
-                                       + models/clock.py        "agora" sem API deprecated
-                                       + errors.py              erros tipados
-                                       routes/ só mapeamento HTTP; utils/ removido
+ANTES                                   DEPOIS
+models/ routes/ services/ utils/        models/          entidade, regras e consultas (sem N+1)
+app.py database.py seed.py              routes/          só HTTP → controller (+ category, system)
+(rotas com ORM, validação e regra;      + config/        settings.py — tudo do ambiente
+ services/ e utils/ sem uso)            + controllers/   task, user, category, report, auth + access.py
+                                        + validators/    fonte única de validação
+                                        + middlewares/   auth (token assinado) e error_handler
+                                        + errors.py      erros tipados
+                                        utils/clock.py   "agora" sem API deprecated
+                                        removidos: services/notification_service.py, utils/helpers.py (código morto)
 ```
 
 ### Checklist de validação
 
-`[x]` = verificado por execução ou leitura do código nesta entrega.
+`[x]` = verificado nas sessões de execução e conferido de novo na revisão (testes, boot
+e roteiro de requisições em [`docs/evidencias/validacao-pos-refatoracao.log`](docs/evidencias/validacao-pos-refatoracao.log)).
 
 | Item | P1 | P2 | P3 |
 |---|:-:|:-:|:-:|
@@ -280,75 +292,62 @@ models/ routes/ services/ utils/       + config/settings.py     configuração �
 | **Fase 2** — relatório segue o template | [x] | [x] | [x] |
 | Cada finding com arquivo e linhas | [x] | [x] | [x] |
 | Ordenados CRITICAL → LOW | [x] | [x] | [x] |
-| Mínimo de 5 findings | [x] 16 | [x] 15 | [x] 14 |
+| Mínimo de 5 findings | [x] 13 | [x] 13 | [x] 11 |
 | APIs deprecated (se aplicável) | [x] varredura sem ocorrência | [x] | [x] |
 | Pausa e pede confirmação antes da Fase 3 | [x] | [x] | [x] |
 | **Fase 3** — estrutura MVC | [x] | [x] | [x] |
 | Config extraída (sem hardcoded) | [x] | [x] | [x] |
-| Models abstraem os dados | [x] | [x] | [x] |
+| Models criados para abstrair dados | [x] | [x] | [x] |
 | Views/Routes separadas | [x] | [x] | [x] |
 | Controllers concentram o fluxo | [x] | [x] | [x] |
 | Error handling centralizado | [x] | [x] | [x] |
 | Entry point claro | [x] | [x] | [x] |
 | Aplicação inicia sem erros | [x] | [x] | [x] |
-| Endpoints originais respondem (com token quando exigido) | [x] 33/33 | [x] 10/10 | [x] 35/35 |
-| Suíte automatizada (401/403, escopo, config de produção, concorrência) | [x] 32 testes | [x] 7 testes | [x] 44 testes |
+| Endpoints originais respondem | [x] 19/19 | [x] 3/3 (+ login novo, 22 casos) | [x] 22/22 |
+| Achados resolvidos | 13/13 | 13/13 | 11/11 |
+| Suíte automatizada | [x] 49 testes | — (validado com curl) | [x] 46 testes |
 
 ### Logs das aplicações rodando após a refatoração
 
-Cada projeto foi executado **antes** (código original) e **depois** com o mesmo
-roteiro de requisições; a comparação é de status HTTP por chamada.
-
-**Projeto 1** — `PORT=2533 ./venv/bin/python app.py` (roteiro com o token do admin obtido em `/login`)
-
-```
-GET    /health                 -> 200 | {"counts":{"pedidos":0,"produtos":10,"usuarios":3},"database":"connected","status":"ok","versao":"1.0.0"}
-GET    /produtos               -> 200 | {"dados":[{"ativo":1,"categoria":"informatica",...
-POST   /produtos               -> 201 | {"dados":{"id":11},"mensagem":"Produto criado","sucesso":true}
-GET    /usuarios               -> 200 | {"dados":[{"criado_em":"...","email":"admin@loja.com","id":1,"nome":"Admin","tipo":"admin"},...   (sem "senha")
-POST   /login (admin123)       -> 200 | {"dados":{"email":"admin@loja.com","id":1,"nome":"Admin","tipo":"admin"},"mensagem":"Login OK","sucesso":true}
-POST   /login (' -- )          -> 401 | {"erro":"Email ou senha inválidos","sucesso":false}        (antes: 200, bypass)
-POST   /pedidos                -> 201 | {"dados":{"pedido_id":1,"total":6179.79},...}
-GET    /relatorios/vendas      -> 200 | {"dados":{"desconto_aplicavel":308.99,"faturamento_bruto":6179.79,...}
-POST   /admin/query            -> 404                                                           (antes: 200, SQL arbitrário)
-POST   /admin/reset-db (admin) -> 200
-GET    /usuarios sem token     -> 401 ; token de cliente -> 403
-GET    /pedidos/usuario/3 com token do usuário 2 -> 403
-cancelar pedido de 3 notebooks: estoque 10 -> 7 -> 10                                           (antes: nunca devolvia)
-diff de status antes/depois (33 chamadas): só /login com SQLi (200→401) e /admin/query (200→404)
-pytest: 32 passed — inclui 8 pedidos simultâneos de 2 unidades com estoque 8: 4 x 201, 4 x 400, estoque final 0
-```
-
-**Projeto 2** — `PORT=2534 ADMIN_API_TOKEN=dev-admin-token npm start`
+Trecho de [`docs/evidencias/validacao-pos-refatoracao.log`](docs/evidencias/validacao-pos-refatoracao.log),
+gerado por [`docs/evidencias/validar.sh`](docs/evidencias/validar.sh) sobre o código
+refatorado (o corpo das respostas está truncado):
 
 ```
-LMS API rodando na porta 2534 (env: development)
-POST   /api/checkout (cartão 4...)       -> 200 | {"msg":"Sucesso","enrollment_id":2}
-POST   /api/checkout (cartão 5...)       -> 400 | Pagamento recusado
-POST   /api/checkout (sem campos)        -> 400 | Bad Request
-GET    /api/admin/financial-report       -> 401 | Não autorizado
-GET    /api/admin/financial-report + Bearer -> 200 | [{"course":"Clean Architecture","revenue":997,...},{"course":"Docker",...}]
-DELETE /api/users/2 + Bearer             -> 200 | Usuário deletado, junto com suas matrículas e pagamentos.
-[payment] autorização solicitada cartão=****4444 valor=497 ...      (antes: PAN completo e pk_live no log)
-8 POST /api/checkout em paralelo         -> 200 x8   (antes da correção da iteração: 7 x 500)
-npm test: 7 pass — 401/403 nas rotas administrativas, contrato do checkout, concorrência
-NODE_ENV=production sem segredos         -> "Falha ao iniciar a aplicação: Variável de ambiente obrigatória ausente: PAYMENT_GATEWAY_KEY..."
-```
+### Projeto 1 — code-smells-project (Python/Flask)
+INFO __main__: Servidor em http://127.0.0.1:5191 (APP_ENV=development)
+GET  /health                                     -> 200 | {"counts":{"pedidos":0,"produtos":10,"usuarios":3},"database":"connected","status":"ok",...
+GET  /produtos                                   -> 200
+GET  /produtos/busca?q=mouse                     -> 200
+POST /login (SQL injection: admin@loja.com' --)  -> 401 | {"erro":"Email ou senha inválidos","sucesso":false}
+GET  /usuarios (sem token)                       -> 401 | {"erro":"Token de acesso ausente","sucesso":false}
+GET  /usuarios (admin)                           -> 200   (sem o campo "senha")
+GET  /usuarios/1 (cliente joao)                  -> 403
+POST /pedidos (cliente joao)                     -> 201 | {"dados":{"pedido_id":1,"total":89.9},...}
+POST /pedidos (quantidade negativa)              -> 400 | {"erro":"Quantidade deve ser um inteiro maior que zero",...}
+GET  /relatorios/vendas (admin)                  -> 200
+POST /admin/query (removida)                     -> 404
 
-**Projeto 3** — `SEED_PASSWORD=dev-password-123 ./venv/bin/python seed.py && PORT=2536 ./venv/bin/python app.py`
+### Projeto 2 — ecommerce-api-legacy (Node.js/Express)
+LMS API rodando em http://127.0.0.1:3191
+POST /api/checkout (cartão 4...)                 -> 200 | {"msg":"Sucesso","enrollment_id":2}
+POST /api/checkout (cartão 5..., recusado)       -> 400 | {"error":"Pagamento recusado"}
+POST /api/checkout (card numérico)               -> 400 | {"error":"Número de cartão inválido"}   (antes: derrubava o processo)
+GET  /api/admin/financial-report (sem token)     -> 401 | {"error":"Não autenticado"}
+GET  /api/admin/financial-report (admin)         -> 200 | [{"course":"Clean Architecture","revenue":997,...
+DELETE /api/users/1 (sem token)                  -> 401
 
-```
-GET    /tasks                  -> 200 | [{"category_id":1,"category_name":"Backend",...,"overdue":true,...
-GET    /tasks/stats            -> 200 | {"cancelled":1,"completion_rate":10.0,"done":1,"in_progress":2,"overdue":2,"pending":6,"total":10}
-GET    /users/1                -> 200 | {...,"role":"admin","tasks":[...]}           (sem "password")
-POST   /login                  -> 200 | {"message":"Login realizado com sucesso","token":"eyJ1c2VyX2lkIjoxLC...","user":{...}}
-GET    /reports/summary        -> 200 | {"overdue":{"count":2,...
-DELETE /users/3 sem token      -> 401 | {"error":"Token ausente"}
-DELETE /users/3 token de user  -> 403 | {"error":"Acesso negado"}
-DELETE /users/4 token de admin -> 200 | {"message":"Usuário deletado com sucesso"}
-diff de status antes/depois (35 chamadas, com token do admin): nenhuma diferença; sem token -> 401
-pytest: 44 passed — matriz de autorização (401/403) de todas as rotas, escopo de leitura, PUT /users por terceiro -> 403
-queries por requisição (antes -> depois): /tasks 17 -> 1, /users 4 -> 2, /categories 5 -> 2
+### Projeto 3 — task-manager-api (Python/Flask)
+GET  /tasks (sem token)                          -> 401 | {"error":"Token de autenticação ausente"}
+POST /login                                      -> 200 | {"token":"eyJ1aWQiOjJ9.avZVfg...", ...}   (antes: "fake-jwt-token-<id>")
+GET  /tasks /tasks/1 /tasks/stats /tasks/search /users /users/1 /categories
+     /reports/summary /reports/user/1 (admin)    -> 200 (todas)
+GET  /reports/summary (user comum)               -> 403
+POST /users com role=admin (anônimo)             -> 403
+PUT  /users/1 role=user (user comum)             -> 403
+ocorrências de "password" em GET /users/1        -> 0
+
+pytest: code-smells-project 49 passed | task-manager-api 46 passed
 ```
 
 Observação de ambiente: os projetos Python imprimem no boot
@@ -360,47 +359,34 @@ pyenv local, não da aplicação; não afeta boot nem endpoints.
 - **Detecção pelo manifesto funcionou nos três**, e a distinção driver cru × ORM
   orientou a auditoria: SQL Injection e transação nos projetos com `sqlite3`; N+1 e
   APIs legadas do ORM no projeto SQLAlchemy.
+- **Linha de base antes de mexer.** Nas três sessões a Fase 3 subiu o código original,
+  registrou status e corpo de cada rota e só depois refatorou, comparando o antes e o
+  depois. Foi assim que apareceram bugs do original além dos code smells: login como
+  admin por SQL Injection, quantidade negativa aumentando o estoque e cancelamento que
+  não devolvia estoque (P1), e `card` numérico derrubando o processo Node inteiro (P2).
 - **A Fase 3 se adaptou ao ponto de partida.** P1 e P2 (monolíticos) ganharam todas as
-  camadas; no P3 as pastas existentes foram mantidas, `controllers/` e `repositories/`
-  foram extraídos, `is_overdue()` e o serviço de notificação passaram a ser usados e
-  `utils/` (código morto) foi removido.
-- **O nível MEDIUM/LOW é o mais fácil de perder** em projetos que "parecem
-  organizados"; por isso a meta mínima de achados e o checklist de cobertura das 14
-  categorias no fim do catálogo.
+  camadas; no P3 as pastas existentes foram mantidas, `controllers/`, `validators/` e
+  `middlewares/` foram extraídos e o código morto de `services/` e `utils/` foi removido.
+- **Mudanças de contrato explícitas.** Cada sessão listou o que mudou no contrato HTTP
+  (rotas que passaram a exigir token, campos sensíveis removidos, 400 em vez de 500) —
+  sempre por exigência de um achado da auditoria.
+- **Ambiente real interfere.** No macOS a porta 5000 é do AirPlay; as sessões validaram
+  em outras portas via `PORT`, que a refatoração passou a ler do ambiente.
 - **Node exigiu cuidado extra com concorrência**: com uma única conexão e I/O
-  assíncrono, transações explícitas se intercalam — algo que não aparece nos projetos
-  Flask (conexão/sessão por requisição). A skill agora testa isso.
-
-### Revisão de segurança pós-entrega
-
-Uma revisão automática de segurança sobre os commits apontou três achados. Foram todos
-corrigidos (e não apenas documentados), com testes:
-
-| Achado | Projeto | Tratamento |
-|---|---|---|
-| [ALTA] `require_admin` só protegia `/admin/reset-db`; catálogo, status de pedido, listagens e relatórios abertos; `/pedidos/usuario/<id>` sem restrição ao próprio usuário | P1 | `/login` passou a emitir token assinado; rotas administrativas exigem `tipo = admin`; rotas por usuário exigem o próprio usuário ou admin; `POST /pedidos` só para o `usuario_id` do token. Relatório 1 ganhou o achado #8 (IDOR) |
-| [MÉDIA] Corrida no estoque (checagem antes do UPDATE) | P1 | UPDATE condicional `... AND estoque >= ?` com conferência de `rowcount` e rollback; quantidades repetidas somadas antes de validar. Teste com 8 pedidos simultâneos |
-| [CRÍTICA] `PUT /users/<id>` sem `@require_auth` e sem checagem do ator | P3 | `require_auth` + próprio usuário ou admin (senão 403); `role`/`active` só admin; troca da própria senha exige `current_password`. Mesmo critério aplicado a todas as rotas de usuários, tasks, relatórios e categorias (tabela no README do projeto) |
-| Revisão do mesmo padrão | P2 | As únicas rotas privilegiadas (relatório financeiro e exclusão de usuário) já exigiam token admin; não há rota de alteração de usuário. Ficaram cobertas por testes |
-| [ALTA] IDOR de **leitura**: `GET /tasks`, `/tasks/search`, `/tasks/stats` e `/tasks/<id>` devolviam tasks de todos a qualquer autenticado | P3 | O ator passa a chegar ao controller; `GET /tasks/<id>` usa a mesma política de PUT/DELETE (dono ou admin/manager); listagem, busca, estatísticas e o `task_count` de categorias têm escopo do ator para usuário comum; `search?user_id=<outro>` → 403. Supervisor continua vendo tudo |
-| [ALTA] Seed com conta admin de senha conhecida tornava o `require_admin` inócuo | P1, P3 | P1: admin só de `ADMIN_EMAIL`/`ADMIN_PASSWORD` (obrigatórias em produção, boot falha sem elas; default explícito só em dev), clientes de exemplo só fora de produção e `/admin/reset-db` atrás de `ENABLE_RESET_DB=false` por padrão. P3: mesmo critério para o admin no boot e `seed.py` recusa rodar em produção. Também corrigido: no P1 o `create_app(config)` passou a valer para conexão, token e flags (antes lia o `settings` global) |
-
-A skill foi atualizada para pegar esse padrão nos três projetos: o AP-05 agora cobre
-autorização por objeto (IDOR) em escrita **e em leitura** (listagens, buscas e
-estatísticas sem escopo do ator) e campos privilegiados no payload, o AP-02 cobre seed
-de conta privilegiada com senha conhecida, o AP-13 cobre corrida check-then-act, o playbook mostra as duas correções e a Fase 3 exige verificar 401/403
-de cada rota protegida.
+  assíncrono, transações explícitas se intercalam. A sessão do P2 criou uma fila de
+  transações e validou 16 checkouts em paralelo — lição incorporada à skill numa
+  iteração anterior.
 
 ### Limites desta entrega
 
-- Os relatórios foram produzidos com o Claude Code seguindo o procedimento da skill
-  sobre o código original. A invocação `/refactor-arch` foi exercitada
-  diretamente na re-auditoria do projeto 2 refatorado (descrita acima). Não houve
-  uma sessão interativa separada `claude "/refactor-arch"` respondendo `y` para cada
-  projeto. As refatorações dos três projetos partiram de uma execução anterior da skill
-  e foram revisadas, corrigidas e validadas nesta entrega.
-- O envio real de e-mail (SMTP) do projeto 3 não foi exercitado: sem `EMAIL_ENABLED`,
-  o serviço apenas registra a notificação no log.
+- O P2 não ganhou suíte automatizada: a sessão validou com curl contra o servidor real
+  (22 casos), mas não criou testes. Os projetos Python ganharam pytest.
+- O P3 mantém `hashlib.md5` em `models/user.py:57` de propósito, só para reconhecer um
+  hash legado e regravá-lo em scrypt no primeiro login; nenhuma senha nova usa MD5.
+- Segredos que estavam no código original (`SECRET_KEY`, `pk_live`, senha SMTP)
+  continuam no histórico do git e devem ser considerados comprometidos; a rotação é
+  externa ao código.
+- O envio real de e-mail do P3 não foi exercitado.
 
 ---
 
@@ -410,15 +396,19 @@ de cada rota protegida.
 
 - **Claude Code** instalado e autenticado (a skill segue a convenção `.claude/skills/`).
 - **Python 3.12+** para os projetos 1 e 3, com `venv` **dentro da pasta do projeto**.
-- **Node.js 18+** para o projeto 2.
+- **Node.js 20.12+** para o projeto 2 (usa `process.loadEnvFile`).
 - Nenhuma chave de API externa: os três projetos usam SQLite.
+- No macOS a porta 5000 costuma estar ocupada pelo Receptor AirPlay; use `PORT`.
 
 ### Executar a skill
 
+Para reproduzir a execução sobre o código original:
+
 ```bash
-cd code-smells-project && claude "/refactor-arch ../reports/audit-project-1.md"
-cd ../ecommerce-api-legacy && claude "/refactor-arch ../reports/audit-project-2.md"
-cd ../task-manager-api && claude "/refactor-arch ../reports/audit-project-3.md"
+git worktree add ../original 0144531     # código original + skill
+cd ../original/code-smells-project   && claude "/refactor-arch ../reports/audit-project-1.md"
+cd ../ecommerce-api-legacy           && claude "/refactor-arch ../reports/audit-project-2.md"
+cd ../task-manager-api               && claude "/refactor-arch ../reports/audit-project-3.md"
 ```
 
 Sem argumento (`claude "/refactor-arch"`), o relatório vai para
@@ -432,50 +422,55 @@ mkdir -p <outro-projeto>/.claude/skills
 cp -r code-smells-project/.claude/skills/refactor-arch <outro-projeto>/.claude/skills/
 ```
 
-> Os projetos aqui já estão refatorados; para reproduzir a auditoria sobre o código
-> original, use `git worktree add ../original 6d1ce62` e execute a skill lá.
-
 ### Validar a refatoração
+
+Roteiro completo (sobe os três projetos, chama as rotas e derruba os servidores):
+
+```bash
+bash docs/evidencias/validar.sh "$PWD" "$(mktemp -d)"
+```
+
+Ou manualmente, por projeto (credenciais de exemplo valem só fora de produção):
 
 **Projeto 1**
 
 ```bash
 cd code-smells-project
-python3 -m venv venv && ./venv/bin/pip install -r requirements.txt
-./venv/bin/pip install -r requirements-dev.txt && ./venv/bin/python -m pytest -q
-PORT=5001 ./venv/bin/python app.py
+python3 -m venv venv && ./venv/bin/pip install -r requirements.txt pytest
+./venv/bin/python -m pytest -q                                   # 49 passed
+APP_ENV=development SECRET_KEY=$(openssl rand -hex 32) PORT=5001 ./venv/bin/python app.py
 curl -s localhost:5001/health
 TOKEN=$(curl -s -X POST localhost:5001/login -H 'Content-Type: application/json' \
      -d '{"email":"admin@loja.com","senha":"admin123"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])')
 curl -s -o /dev/null -w '%{http_code}\n' localhost:5001/usuarios                        # 401
 curl -s -H "Authorization: Bearer $TOKEN" localhost:5001/usuarios | grep -c '"senha"'    # 0
-curl -s -o /dev/null -w '%{http_code}\n' -X POST localhost:5001/login \
-     -H 'Content-Type: application/json' -d "{\"email\":\"admin@loja.com' -- \",\"senha\":\"x\"}"   # 401
-curl -s -o /dev/null -w '%{http_code}\n' -X POST localhost:5001/admin/query   # 404
+curl -s -o /dev/null -w '%{http_code}\n' -X POST localhost:5001/admin/query              # 404
 ```
 
 **Projeto 2**
 
 ```bash
-cd ecommerce-api-legacy && npm install && npm test
-PORT=3000 ADMIN_API_TOKEN=dev-admin-token npm start
+cd ecommerce-api-legacy && npm install
+NODE_ENV=development PAYMENT_GATEWAY_KEY=pk_test_local AUTH_SECRET=$(openssl rand -hex 32) PORT=3000 npm start
 curl -s -X POST localhost:3000/api/checkout -H 'Content-Type: application/json' \
   -d '{"usr":"Guilherme","eml":"gui@fullcycle.com.br","pwd":"senhaforte","c_id":2,"card":"4111222233334444"}'
-curl -s -o /dev/null -w '%{http_code}\n' localhost:3000/api/admin/financial-report          # 401
-curl -s -H 'Authorization: Bearer dev-admin-token' localhost:3000/api/admin/financial-report  # 200
+curl -s -o /dev/null -w '%{http_code}\n' localhost:3000/api/admin/financial-report       # 401
+TOKEN=$(curl -s -X POST localhost:3000/api/auth/login -H 'Content-Type: application/json' \
+     -d '{"email":"admin@lms.local","password":"admin-dev-only"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])')
+curl -s -H "Authorization: Bearer $TOKEN" localhost:3000/api/admin/financial-report      # 200
 ```
 
 **Projeto 3**
 
 ```bash
 cd task-manager-api
-python3 -m venv venv && ./venv/bin/pip install -r requirements.txt
-./venv/bin/pip install -r requirements-dev.txt && ./venv/bin/python -m pytest -q
-SEED_PASSWORD=dev-password-123 ./venv/bin/python seed.py
-PORT=5003 ./venv/bin/python app.py
-curl -s -o /dev/null -w '%{http_code}\n' localhost:5003/tasks       # 401
+python3 -m venv venv && ./venv/bin/pip install -r requirements-dev.txt
+./venv/bin/python -m pytest -q                                   # 46 passed
+export SECRET_KEY=$(openssl rand -hex 32)
+./venv/bin/python seed.py && PORT=5003 ./venv/bin/python app.py
+curl -s -o /dev/null -w '%{http_code}\n' localhost:5003/tasks    # 401
 TOKEN=$(curl -s -X POST localhost:5003/login -H 'Content-Type: application/json' \
-     -d '{"email":"joao@email.com","password":"dev-password-123"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])')
+     -d '{"email":"joao@email.com","password":"1234"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])')
 curl -s -H "Authorization: Bearer $TOKEN" localhost:5003/tasks
 curl -s -H "Authorization: Bearer $TOKEN" localhost:5003/users/1 | grep -c '"password"'   # 0
 ```
@@ -483,7 +478,7 @@ curl -s -H "Authorization: Bearer $TOKEN" localhost:5003/users/1 | grep -c '"pas
 **Regressão dos anti-patterns** (cada comando deve retornar vazio):
 
 ```bash
-grep -rnE --exclude-dir={venv,.claude} '(SELECT|INSERT|UPDATE|DELETE).*("[[:space:]]*\+|\+[[:space:]]*str\()' --include='*.py' code-smells-project
 grep -rnE "badCrypto|pk_live|senha_super_secreta" ecommerce-api-legacy/src
-grep -rnE --exclude-dir={venv,.claude} "datetime\.utcnow\(\)|\.query\.get\(|hashlib\.md5|except *:" --include='*.py' task-manager-api
+grep -rnE --exclude-dir={venv,.claude,tests} "datetime\.utcnow\(\)|\.query\.get\(|except *:" --include='*.py' task-manager-api
+grep -rnE --exclude-dir={venv,.claude,tests} "minha-chave-super-secreta|super-secret-key-123|'senha123'" --include='*.py' code-smells-project task-manager-api
 ```

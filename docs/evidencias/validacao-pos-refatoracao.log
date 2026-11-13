@@ -1,0 +1,68 @@
+# Validação pós-refatoração — 2026-11-12 21:10
+# Roteiro: docs/evidencias/validar.sh (sobe os 3 projetos refatorados e chama as rotas)
+
+### Projeto 1 — code-smells-project (Python/Flask)
+$ APP_ENV=development SECRET_KEY=<aleatória> PORT=5191 ./venv/bin/python app.py
+2026-11-12 21:10:36,491 INFO seed: Conta administradora criada a partir da configuração
+2026-11-12 21:10:36,590 INFO seed: Dados de demonstração garantidos (APP_ENV=development)
+2026-11-12 21:10:36,594 INFO __main__: Servidor em http://127.0.0.1:5191 (APP_ENV=development)
+GET  /health                                               -> 200 | {"counts":{"pedidos":0,"produtos":10,"usuarios":3},"database":"connected","status":"ok","versao":"1.0.0"}
+GET  /produtos                                             -> 200 | {"dados":[{"ativo":1,"categoria":"informatica","criado_em":"2026-11-13 00:10:36","descricao":"Notebook potente
+GET  /produtos/busca?q=mouse                               -> 200 | {"dados":[{"ativo":1,"categoria":"informatica","criado_em":"2026-11-13 00:10:36","descricao":"Mouse sem fio er
+GET  /produtos/1                                           -> 200 | {"dados":{"ativo":1,"categoria":"informatica","criado_em":"2026-11-13 00:10:36","descricao":"Notebook potente 
+POST /login (SQL injection: admin@loja.com' --)            -> 401 | {"erro":"Email ou senha inv\u00e1lidos","sucesso":false}
+GET  /usuarios (sem token)                                 -> 401 | {"erro":"Token de acesso ausente","sucesso":false}
+GET  /usuarios (admin)                                     -> 200 | {"dados":[{"criado_em":"2026-11-13 00:10:36","email":"admin@loja.com","id":1,"nome":"Admin","tipo":"admin"},{"
+GET  /usuarios/1 (cliente joao)                            -> 403 | {"erro":"Acesso negado","sucesso":false}
+POST /pedidos (cliente joao)                               -> 201 | {"dados":{"pedido_id":1,"total":89.9},"mensagem":"Pedido criado com sucesso","sucesso":true}
+POST /pedidos (quantidade negativa)                        -> 400 | {"erro":"Quantidade deve ser um inteiro maior que zero","sucesso":false}
+GET  /pedidos (admin)                                      -> 200 | {"dados":[{"criado_em":"2026-11-13 00:10:37","id":1,"itens":[{"preco_unitario":89.9,"produto_id":2,"produto_no
+GET  /relatorios/vendas (admin)                            -> 200 | {"dados":{"desconto_aplicavel":0,"faturamento_bruto":89.9,"faturamento_liquido":89.9,"pedidos_aprovados":0,"pe
+POST /admin/query (removida)                               -> 404 | {"erro":"The requested URL was not found on the server. If you entered the URL manually please check your spel
+
+### Projeto 2 — ecommerce-api-legacy (Node.js/Express)
+$ NODE_ENV=development PAYMENT_GATEWAY_KEY=<teste> AUTH_SECRET=<aleatório> PORT=3191 node src/app.js
+LMS API rodando em http://127.0.0.1:3191
+POST /api/checkout (cartão 4...)                          -> 200 | {"msg":"Sucesso","enrollment_id":2}
+POST /api/checkout (cartão 5..., recusado)                -> 400 | {"error":"Pagamento recusado"}
+POST /api/checkout (card numérico; antes derrubava)       -> 400 | {"error":"Número de cartão inválido"}
+POST /api/auth/login (admin)                               -> 200 | {"token":"eyJzdWIiOjIsImV4cCI6MTc5NDUzMjIzN30.NSipnXHUwsQO0W3yzIpGOSzC6rXlU5sy2AqhcR3SFtc","token_type":"Beare
+GET  /api/admin/financial-report (sem token)               -> 401 | {"error":"Não autenticado"}
+GET  /api/admin/financial-report (admin)                   -> 200 | [{"course":"Clean Architecture","revenue":997,"students":[{"student":"Leonan","paid":997}]},{"course":"Docker"
+DELETE /api/users/1 (sem token)                            -> 401 | {"error":"Não autenticado"}
+DELETE /api/users/999 (admin)                              -> 404 | {"error":"Usuário não encontrado"}
+
+### Projeto 3 — task-manager-api (Python/Flask)
+$ APP_ENV=development SECRET_KEY=<aleatória> ./venv/bin/python seed.py && PORT=5193 ./venv/bin/python app.py
+Seed concluído com sucesso!
+  3 usuários
+  4 categorias
+  10 tasks
+GET  /health                                               -> 200 | {"status":"ok","timestamp":"2026-11-12 21:10:38.407456"}
+GET  /tasks (sem token)                                    -> 401 | {"error":"Token de autentica\u00e7\u00e3o ausente"}
+POST /login (token: fake-jwt-token → assinado)           -> 200 | {"message":"Login realizado com sucesso","token":"eyJ1aWQiOjJ9.avZVfg.wUmtPQjQBeIqV6Rd_ooSmIOZDes","user":{"ac
+GET  /tasks (admin)                                        -> 200 | [{"category_id":1,"category_name":"Backend","created_at":"2026-11-13 00:10:37.947658","description":"Adicionar
+GET  /tasks/1 (admin)                                      -> 200 | {"category_id":1,"created_at":"2026-11-13 00:10:37.947658","description":"Adicionar autentica\u00e7\u00e3o rea
+GET  /tasks/stats (admin)                                  -> 200 | {"cancelled":1,"completion_rate":10.0,"done":1,"in_progress":2,"overdue":2,"pending":6,"total":10}
+GET  /tasks/search?q=a (admin)                             -> 200 | [{"category_id":1,"created_at":"2026-11-13 00:10:37.947658","description":"Adicionar autentica\u00e7\u00e3o re
+GET  /users (admin)                                        -> 200 | [{"active":true,"created_at":"2026-11-13 00:10:37.850335","email":"joao@email.com","id":1,"name":"Jo\u00e3o Si
+GET  /users/1 (admin)                                      -> 200 | {"active":true,"created_at":"2026-11-13 00:10:37.850335","email":"joao@email.com","id":1,"name":"Jo\u00e3o Sil
+GET  /categories (admin)                                   -> 200 | [{"color":"#3498db","created_at":"2026-11-13 00:10:37.946497","description":"Tarefas de backend","id":1,"name"
+GET  /reports/summary (admin)                              -> 200 | {"generated_at":"2026-11-13 00:10:38.519613","overdue":{"count":2,"tasks":[{"days_overdue":3,"due_date":"2026-
+GET  /reports/user/1 (admin)                               -> 200 | {"statistics":{"cancelled":0,"completion_rate":0.0,"done":0,"high_priority":2,"in_progress":0,"overdue":2,"pen
+GET  /reports/summary (user comum)                         -> 403 | {"error":"Acesso negado"}
+POST /users com role=admin (anônimo)                      -> 403 | {"error":"Apenas administradores definem o papel do usu\u00e1rio"}
+PUT  /users/1 role=user (user comum)                       -> 403 | {"error":"Acesso negado"}
+ocorrências de "password" em GET /users/1                 -> 0
+
+### Suítes automatizadas
+$ (code-smells-project) ./venv/bin/python -m pytest -q
+49 passed in 10.34s
+$ (task-manager-api) ./venv/bin/python -m pytest -q
+46 passed in 8.58s
+
+### Greps de regressão dos anti-patterns
+$ grep -rnE "badCrypto|pk_live|senha_super_secreta" ecommerce-api-legacy/src
+(vazio)
+$ grep -rnE --exclude-dir={venv,.claude,tests} "datetime\.utcnow\(\)|\.query\.get\(|except *:" --include="*.py" task-manager-api
+(vazio)
