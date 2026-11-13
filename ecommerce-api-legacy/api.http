@@ -24,8 +24,20 @@ Content-Type: application/json
   "card": "5111222233334444"
 }
 
-### Relatório financeiro administrativo
-GET {{baseUrl}}/api/admin/financial-report
+### Login (admin de desenvolvimento)
+# @name login
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
 
-### Deletar usuário
+{
+  "email": "admin@lms.local",
+  "password": "admin-dev-only"
+}
+
+### Relatório financeiro administrativo (exige admin)
+GET {{baseUrl}}/api/admin/financial-report
+Authorization: Bearer {{login.response.body.token}}
+
+### Deletar usuário (admin ou o próprio usuário)
 DELETE {{baseUrl}}/api/users/1
+Authorization: Bearer {{login.response.body.token}}
